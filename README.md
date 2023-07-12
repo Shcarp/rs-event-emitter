@@ -41,8 +41,8 @@ emitter.on("event2".to_string(), handler2.clone());
 ```
 5. Emit an event:
 ```rust
-emitter.emit("event1", (42, "hello", 3.14));
-emitter.emit("event2", ("John".to_string(), 25));
+emitter.emit::<(i32, &str, f64)>("event1", (42, "hello", 3.14));
+emitter.emit::<(String, u32)>("event2", ("John".to_string(), 25));
 ```
 6. Unregister event handlers using the EventEmitter::off method:
 ```rust
@@ -85,16 +85,16 @@ fn main() {
     emitter.on("event2".to_string(), handler2.clone());
 
     // Emit events
-    emitter.emit("event1", (42, "hello", 3.14));
-    emitter.emit("event2", ("John".to_string(), 25));
+    emitter.emit::<(i32, &str, f64)>("event1", (42, "hello", 3.14));
+    emitter.emit::<(String, u32)>("event2", ("John".to_string(), 25));
 
     // Unregister event handlers
     emitter.off("event1", &handler1);
     emitter.off("event2", &handler2);
 
     // Emit events again, but handlers should not be called
-    emitter.emit("event1", (41, "world", 2.71));
-    emitter.emit("event2", ("Alice".to_string(), 30));
+    emitter.emit::<(i32, &str, f64)>("event1", (42, "hello", 3.14));
+    emitter.emit::<(String, u32)>("event2", ("John".to_string(), 25));
 }
 ```
 When you run the above code, you should see the event handlers being called for the emitted events.

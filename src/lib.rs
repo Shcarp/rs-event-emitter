@@ -84,12 +84,14 @@ mod tests {
 
         // Define the event handlers
         let handler1 = EventHandler::new(|(a, b, c): (i32, &str, f64)| {
+            println!("event1: {}, {}, {}", a, b, c);
             assert_eq!(a, 42);
             assert_eq!(b, "hello");
             assert_eq!(c, 3.14);
         });
 
         let handler2 = EventHandler::new(|(name, age): (String, u32)| {
+            println!("event2: {}, {}", name, age);
             assert_eq!(name, "John");
             assert_eq!(age, 25);
         });
@@ -98,15 +100,15 @@ mod tests {
         emitter.on("event1".to_string(), handler1.clone());
         emitter.on("event2".to_string(), handler2.clone());
         // Emit events
-        emitter.emit("event1", (42, "hello", 3.14));
-        emitter.emit("event2", ("John".to_string(), 25));
+        emitter.emit::<(i32, &str, f64)>("event1", (42, "hello", 3.14));
+        emitter.emit::<(String, u32)>("event2", ("John".to_string(), 25));
 
         // Unregister event handlers
         emitter.off("event1", &handler1);
         emitter.off("event2", &handler2);
 
         // Emit events again, but handlers should not be called
-        emitter.emit("event1", (41, "world", 2.71));
-        emitter.emit("event2", ("Alice".to_string(), 30));
+        emitter.emit::<(i32, &str, f64)>("event1", (41, "world", 2.71));
+        emitter.emit::<(String, u32)>("event2", ("Alice".to_string(), 30));
     }
 }
