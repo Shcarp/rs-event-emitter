@@ -1,7 +1,7 @@
 ### Event System
-A simple event-emitter implementation in Rust.
+A simple rs-event-emitter implementation in Rust.
 
-The event-emitter allows you to register event handlers for specific events and emit events with associated data. It provides a way to decouple components and enable communication through events.
+The rs-event-emitter allows you to register event handlers for specific events and emit events with associated data. It provides a way to decouple components and enable communication through events.
 
 Currently, the parameters only support types that have implemented cloning. Improvements will be made in the future.
 
@@ -11,11 +11,11 @@ To use the event system, follow these steps:
 1. Add the following to your `Cargo.toml` file:
 ```toml
 [dependencies]
-event-emitter = "0.0.1"
+rs-event-emitter = "0.0.1"
 ```
 2. Import the crate in your `main.rs` or `lib.rs` file:
 ```rust
-extern crate event_emitter::*;
+extern crate rs_event_emitter::*;
 ```
 3. Create an event handler function:
 ```rust
@@ -54,9 +54,9 @@ emitter.off("event2", &handler2);
 `EventEmitter`
 + `new() -> Self`: Creates a new `EventEmitter` instance.
 
-+ `on<T>(&self, event: String, handler: EventHandler<T>)`: Registers an event handler for a specific event.
++ `on<T>(&self, event: String, handler: EventHandler<T>)`: listen an event handler for a specific event.
 
-+ `off<T>(&self, event: &str, handler: &EventHandler<T>)`: Unregisters an event handler for a specific event.
++ `off<T>(&self, event: &str, handler: &EventHandler<T>)`: unListen an event handler for a specific event.
 
 + `emit<T: 'static + Clone>(&self, event: &str, data: T)`: Emits an event with associated data, triggering the registered event handlers for that event.
 
@@ -65,7 +65,7 @@ emitter.off("event2", &handler2);
 
 ### Examples
 ```rust
-use event_emitter::*;
+use rs_event_emitter::*;
 
 fn main() {
     // Create a new EventEmitter
