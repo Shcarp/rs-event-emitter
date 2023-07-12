@@ -19,12 +19,16 @@ extern crate event_emitter::*;
 ```
 3. Create an event handler function:
 ```rust
-let handler1 = EventHandler::new(|data: (i32, &str, f64)| {
-    // Handle the event with data of type (i32, &str, f64)
+// Define the event handlers
+let handler1 = EventHandler::new(|(a, b, c): (i32, &str, f64)| {
+    assert_eq!(a, 42);
+    assert_eq!(b, "hello");
+    assert_eq!(c, 3.14);
 });
 
-let handler2 = EventHandler::new(|data: (String, u32)| {
-    // Handle the event with data of type (String, u32)
+let handler2 = EventHandler::new(|(name, age): (String, u32)| {
+    assert_eq!(name, "John");
+    assert_eq!(age, 25);
 });
 ```
 4. Register the event handler for a specific event:
