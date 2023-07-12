@@ -1,49 +1,30 @@
 use dashmap::DashMap;
-use std::{any::Any, ptr, sync::Arc};
+use std::{any::Any, sync::Arc};
 
 #[derive(Clone)]
 pub struct EventHandler<T: 'static> {
-    handler: Arc<Box<dyn Fn(&T) + Send + Sync>>,
+    handler: Arc<Box<dyn Fn(T) + Send + Sync>>,
 }
 
 unsafe impl<T> Send for EventHandler<T> {}
 unsafe impl<T> Sync for EventHandler<T> {}
 
-impl<T: 'static> PartialEq for EventHandler<T> {
-    fn eq(&self, other: &Self) -> bool {
-        self.cmp(other)
-    }
-}
-
-impl<T: 'static> Eq for EventHandler<T> {}
-
-impl<T: 'static> EventHandler<T> {
+impl<T: Clone> EventHandler<T> {
     pub fn new<F>(handler: F) -> Self
     where
-        F: Fn(&T) + Send + Sync + 'static,
+        F: Fn(T) + Send + Sync + 'static,
     {
         EventHandler {
             handler: Arc::new(Box::new(handler)),
         }
     }
 
-    pub fn call(&self, data: &Box<dyn Any>) {
+    fn call(&self, data: Box<dyn Any>) {
         if let Some(value) = data.downcast_ref::<T>() {
-            (self.handler)(value);
+            (self.handler)(value.clone());
         }
-    }
-
-    pub fn clone(&self) -> Self {
-        EventHandler {
-            handler: self.handler.clone(),
-        }
-    }
-
-    pub fn cmp(&self, other: &EventHandler<T>) -> bool {
-        ptr::eq(self.handler.as_ref(), other.handler.as_ref())
     }
 }
-
 
 #[derive(Clone)]
 pub struct EventEmitter {
@@ -81,12 +62,11 @@ impl EventEmitter {
         }
     }
 
-    pub fn emit<T: 'static>(&self, event: &str, data: Box<dyn Any>) {
+    pub fn emit<T: 'static + Clone>(&self, event: &str, data: T) {
         if let Some(event_handlers) = self.event_handlers.get(&event.to_string()) {
             for handler in event_handlers.iter() {
                 if let Some(handler) = handler.downcast_ref::<EventHandler<T>>() {
-                    handler.call(&data);
-                    continue;
+                    handler.call(Box::new(data.clone()) as Box<dyn Any>);
                 }
             }
         }
@@ -103,28 +83,30 @@ mod tests {
         let emitter = EventEmitter::new();
 
         // Define the event handlers
-        let handler1 = EventHandler::<i32>::new(|data| {
-            assert_eq!(*data, 42);
+        let handler1 = EventHandler::new(|(a, b, c): (i32, &str, f64)| {
+            assert_eq!(a, 42);
+            assert_eq!(b, "hello");
+            assert_eq!(c, 3.14);
         });
 
-        let handler2 = EventHandler::<String>::new(|data| {
-            assert_eq!(data, "Hello");
+        let handler2 = EventHandler::new(|(name, age): (String, u32)| {
+            assert_eq!(name, "John");
+            assert_eq!(age, 25);
         });
 
         // Register the event handlers
         emitter.on("event1".to_string(), handler1.clone());
         emitter.on("event2".to_string(), handler2.clone());
-
         // Emit events
-        emitter.emit::<i32>("event1", Box::new(42));
-        emitter.emit::<String>("event2", Box::new("Hello".to_string()));
+        emitter.emit("event1", (42, "hello", 3.14));
+        emitter.emit("event2", ("John".to_string(), 25));
 
         // Unregister event handlers
         emitter.off("event1", &handler1);
         emitter.off("event2", &handler2);
 
         // Emit events again, but handlers should not be called
-        emitter.emit::<i32>("event1", Box::new(41));
-        emitter.emit::<String>("event2", Box::new("Hello1".to_string()));
+        emitter.emit("event1", (41, "world", 2.71));
+        emitter.emit("event2", ("Alice".to_string(), 30));
     }
 }
