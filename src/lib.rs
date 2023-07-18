@@ -1,6 +1,11 @@
 use dashmap::DashMap;
 use std::{any::Any, sync::Arc};
 
+pub trait Handle {
+    fn call(&self, data: Box<dyn Any>);
+    fn cmp(&self, other: &dyn Handle) -> bool;
+}
+
 #[derive(Clone)]
 pub struct EventHandler<T: 'static> {
     handler: Arc<Box<dyn Fn(T) + Send + Sync>>,
@@ -18,17 +23,24 @@ impl<T: Clone> EventHandler<T> {
             handler: Arc::new(Box::new(handler)),
         }
     }
+}
 
+impl<T: Clone> Handle for EventHandler<T> {
     fn call(&self, data: Box<dyn Any>) {
         if let Some(value) = data.downcast_ref::<T>() {
             (self.handler)(value.clone());
         }
     }
+    fn cmp(&self, other: &dyn Handle) -> bool {
+        let o_ptr = other as *const dyn Handle;
+        let ptr = self as *const dyn Handle;
+        ptr == o_ptr
+    }
 }
 
 #[derive(Clone)]
 pub struct EventEmitter {
-    event_handlers: Arc<DashMap<String, Vec<Box<dyn Any>>>>,
+    event_handlers: Arc<DashMap<&'static str, Vec<Box<dyn Handle>>>>,
 }
 
 unsafe impl Send for EventEmitter {}
@@ -41,33 +53,25 @@ impl EventEmitter {
         }
     }
 
-    pub fn on<T>(&self, event: String, handler: EventHandler<T>) {
+    pub fn on(&self, event: &'static str, handler: impl Handle + 'static) {
         self.event_handlers
             .entry(event)
             .or_insert(Vec::new())
             .push(Box::new(handler));
     }
 
-    pub fn off<T>(&self, event: &str, handler: &EventHandler<T>) {
+    pub fn off(&self, event: &str, handler: &(impl Handle + 'static)) {
         if let Some(mut event_handlers) = self.event_handlers.get_mut(event) {
             event_handlers.retain(|h| {
-                if let Some(value) = h.downcast_ref::<EventHandler<T>>() {
-                    let ptr: *const EventHandler<T> = value as *const EventHandler<T>;
-                    let other_ptr: *const EventHandler<T> =
-                        handler as *const EventHandler<T>;
-                    return ptr == other_ptr;
-                }
-                false
+                h.cmp(handler)
             });
         }
     }
 
     pub fn emit<T: 'static + Clone>(&self, event: &str, data: T) {
-        if let Some(event_handlers) = self.event_handlers.get(&event.to_string()) {
+        if let Some(event_handlers) = self.event_handlers.get(event) {
             for handler in event_handlers.iter() {
-                if let Some(handler) = handler.downcast_ref::<EventHandler<T>>() {
-                    handler.call(Box::new(data.clone()) as Box<dyn Any>);
-                }
+                handler.call(Box::new(data.clone()) as Box<dyn Any>);
             }
         }
     }
@@ -97,18 +101,18 @@ mod tests {
         });
 
         // Register the event handlers
-        emitter.on("event1".to_string(), handler1.clone());
-        emitter.on("event2".to_string(), handler2.clone());
+        emitter.on("event1", handler1.clone());
+        emitter.on("event2", handler2.clone());
         // Emit events
-        emitter.emit::<(i32, &str, f64)>("event1", (42, "hello", 3.14));
-        emitter.emit::<(String, u32)>("event2", ("John".to_string(), 25));
+        emitter.emit("event1", (42, "hello", 3.14));
+        emitter.emit("event2", ("John".to_string(), 25 as u32));
 
         // Unregister event handlers
         emitter.off("event1", &handler1);
         emitter.off("event2", &handler2);
 
         // Emit events again, but handlers should not be called
-        emitter.emit::<(i32, &str, f64)>("event1", (41, "world", 2.71));
-        emitter.emit::<(String, u32)>("event2", ("Alice".to_string(), 30));
+        emitter.emit("event1", (41, "world", 2.71));
+        emitter.emit("event2", ("Alice".to_string(), 30));
     }
 }

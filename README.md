@@ -41,8 +41,8 @@ emitter.on("event2".to_string(), handler2.clone());
 ```
 5. Emit an event:
 ```rust
-emitter.emit::<(i32, &str, f64)>("event1", (42, "hello", 3.14));
-emitter.emit::<(String, u32)>("event2", ("John".to_string(), 25));
+emitter.emit("event1", (42, "hello", 3.14));
+emitter.emit("event2", ("John".to_string(), 25));
 ```
 6. Unregister event handlers using the EventEmitter::off method:
 ```rust
@@ -69,32 +69,36 @@ use rs_event_emitter::*;
 
 fn main() {
     // Create a new EventEmitter
-    let emitter = EventEmitter::new();
+        let emitter = EventEmitter::new();
 
-    // Define the event handlers
-    let handler1 = EventHandler::new(|(a, b, c): (i32, &str, f64)| {
-        println!("Event handler 1 called with data: {}, {}, {}", a, b, c);
-    });
+        // Define the event handlers
+        let handler1 = EventHandler::new(|(a, b, c): (i32, &str, f64)| {
+            println!("event1: {}, {}, {}", a, b, c);
+            assert_eq!(a, 42);
+            assert_eq!(b, "hello");
+            assert_eq!(c, 3.14);
+        });
 
-    let handler2 = EventHandler::new(|(name, age): (String, u32)| {
-        println!("Event handler 2 called with data: {}, {}", name, age);
-    });
+        let handler2 = EventHandler::new(|(name, age): (String, u32)| {
+            println!("event2: {}, {}", name, age);
+            assert_eq!(name, "John");
+            assert_eq!(age, 25);
+        });
 
-    // Register the event handlers
-    emitter.on("event1".to_string(), handler1.clone());
-    emitter.on("event2".to_string(), handler2.clone());
+        // Register the event handlers
+        emitter.on("event1", handler1.clone());
+        emitter.on("event2", handler2.clone());
+        // Emit events
+        emitter.emit("event1", (42, "hello", 3.14));
+        emitter.emit("event2", ("John".to_string(), 25 as u32));
 
-    // Emit events
-    emitter.emit::<(i32, &str, f64)>("event1", (42, "hello", 3.14));
-    emitter.emit::<(String, u32)>("event2", ("John".to_string(), 25));
+        // Unregister event handlers
+        emitter.off("event1", &handler1);
+        emitter.off("event2", &handler2);
 
-    // Unregister event handlers
-    emitter.off("event1", &handler1);
-    emitter.off("event2", &handler2);
-
-    // Emit events again, but handlers should not be called
-    emitter.emit::<(i32, &str, f64)>("event1", (42, "hello", 3.14));
-    emitter.emit::<(String, u32)>("event2", ("John".to_string(), 25));
+        // Emit events again, but handlers should not be called
+        emitter.emit("event1", (41, "world", 2.71));
+        emitter.emit("event2", ("Alice".to_string(), 30));
 }
 ```
 When you run the above code, you should see the event handlers being called for the emitted events.
