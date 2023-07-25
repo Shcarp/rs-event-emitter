@@ -1,46 +1,51 @@
 use dashmap::DashMap;
-use std::{any::Any, sync::Arc};
+use uuid::Uuid;
+use std::{any::Any, sync::Arc, fmt::Debug};
 
 pub trait Handle {
-    fn call(&self, data: Box<dyn Any>);
+    fn call(&self, data: &Box<dyn Any>);
     fn cmp(&self, other: &dyn Handle) -> bool;
+    fn id(&self) -> Uuid;
 }
 
 #[derive(Clone)]
 pub struct EventHandler<T: 'static> {
-    handler: Arc<Box<dyn Fn(T) + Send + Sync>>,
+    uuid: Uuid,
+    handler: fn(T),
 }
 
 unsafe impl<T> Send for EventHandler<T> {}
 unsafe impl<T> Sync for EventHandler<T> {}
 
 impl<T: Clone> EventHandler<T> {
-    pub fn new<F>(handler: F) -> Self
-    where
-        F: Fn(T) + Send + Sync + 'static,
+    pub fn new(handler: fn(T)) -> Self
     {
         EventHandler {
-            handler: Arc::new(Box::new(handler)),
+            handler,
+            uuid: Uuid::new_v4(),
         }
     }
 }
 
-impl<T: Clone> Handle for EventHandler<T> {
-    fn call(&self, data: Box<dyn Any>) {
+impl<T: Clone + Debug> Handle for EventHandler<T> {
+    fn call(&self, data: &Box<dyn Any>) {
         if let Some(value) = data.downcast_ref::<T>() {
             (self.handler)(value.clone());
         }
     }
+
+    fn id(&self) -> Uuid {
+        self.uuid
+    }
+  
     fn cmp(&self, other: &dyn Handle) -> bool {
-        let o_ptr = other as *const dyn Handle;
-        let ptr = self as *const dyn Handle;
-        ptr == o_ptr
+        self.id() == other.id()
     }
 }
 
 #[derive(Clone)]
 pub struct EventEmitter {
-    event_handlers: Arc<DashMap<&'static str, Vec<Box<dyn Handle>>>>,
+    event_handlers: Arc<DashMap<&'static str, Vec<Arc<dyn Handle>>>>,
 }
 
 unsafe impl Send for EventEmitter {}
@@ -53,25 +58,23 @@ impl EventEmitter {
         }
     }
 
-    pub fn on(&self, event: &'static str, handler: impl Handle + 'static) {
+    pub fn on(&self, event: &'static str, handler: Arc<dyn Handle>) {
         self.event_handlers
             .entry(event)
             .or_insert(Vec::new())
-            .push(Box::new(handler));
+            .push(handler);
     }
 
-    pub fn off(&self, event: &str, handler: &(impl Handle + 'static)) {
+    pub fn off(&self, event: &str, handler: Arc<dyn Handle>) {
         if let Some(mut event_handlers) = self.event_handlers.get_mut(event) {
-            event_handlers.retain(|h| {
-                h.cmp(handler)
-            });
+            event_handlers.retain(|h| !h.cmp(&*handler));
         }
     }
 
-    pub fn emit<T: 'static + Clone>(&self, event: &str, data: T) {
+    pub fn emit(&self, event: &str, data: Box<dyn Any>) {
         if let Some(event_handlers) = self.event_handlers.get(event) {
             for handler in event_handlers.iter() {
-                handler.call(Box::new(data.clone()) as Box<dyn Any>);
+                handler.call(&data);
             }
         }
     }
@@ -101,18 +104,20 @@ mod tests {
         });
 
         // Register the event handlers
-        emitter.on("event1", handler1.clone());
-        emitter.on("event2", handler2.clone());
+        emitter.on("event1", Arc::new(handler1.clone()));
+        emitter.on("event2", Arc::new(handler2.clone()));
+
         // Emit events
-        emitter.emit("event1", (42, "hello", 3.14));
-        emitter.emit("event2", ("John".to_string(), 25 as u32));
+        emitter.emit("event1", Box::new((42, "hello", 3.14)));
+        emitter.emit("event2", Box::new(("John".to_string(), 25 as u32)));
 
         // Unregister event handlers
-        emitter.off("event1", &handler1);
-        emitter.off("event2", &handler2);
+        emitter.off("event1", Arc::new(handler1));
+        emitter.off("event2", Arc::new(handler2)); 
 
         // Emit events again, but handlers should not be called
-        emitter.emit("event1", (41, "world", 2.71));
-        emitter.emit("event2", ("Alice".to_string(), 30));
+        emitter.emit("event1", Box::new((41, "world", 2.71)));
+        emitter.emit("event2", Box::new(("Alice".to_string(), 30 as u32)));
     }
 }
+ 
