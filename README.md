@@ -11,7 +11,7 @@ To use the event system, follow these steps:
 1. Add the following to your `Cargo.toml` file:
 ```toml
 [dependencies]
-rs-event-emitter = "0.0.1"
+rs-event-emitter = "0.0.4"
 ```
 2. Import the crate in your `main.rs` or `lib.rs` file:
 ```rust
@@ -35,33 +35,33 @@ let handler2 = EventHandler::new(|(name, age): (String, u32)| {
 ```rust
 let emitter = EventEmitter::new();
 
-emitter.on("event1".to_string(), handler1.clone());
-emitter.on("event2".to_string(), handler2.clone());
+emitter.on("event1", Arc::new(handler1.clone()));
+emitter.on("event2", Arc::new(handler2.clone()));
 
 ```
 5. Emit an event:
 ```rust
-emitter.emit("event1", (42, "hello", 3.14));
-emitter.emit("event2", ("John".to_string(), 25));
+emitter.emit("event1", Box::new((42, "hello", 3.14)));
+emitter.emit("event2", Box::new(("John".to_string(), 25 as u32)));
 ```
 6. Unregister event handlers using the EventEmitter::off method:
 ```rust
-emitter.off("event1", &handler1);
-emitter.off("event2", &handler2);
+emitter.off("event1", Arc::new(handler1));
+emitter.off("event2", Arc::new(handler2)); 
 ```
 
 ### API
 `EventEmitter`
-+ `new() -> Self`: Creates a new `EventEmitter` instance.
++ `fn new() -> Self`: Creates a new `EventEmitter` instance.
 
-+ `on<T>(&self, event: String, handler: EventHandler<T>)`: listen an event handler for a specific event.
++ `fn on(&self, event: &'static str, handler: Arc<dyn Handle>)`: listen an event handler for a specific event.
 
-+ `off<T>(&self, event: &str, handler: &EventHandler<T>)`: unListen an event handler for a specific event.
++ `fn off(&self, event: &str, handler: Arc<dyn Handle>)`: unListen an event handler for a specific event.
 
-+ `emit<T: 'static + Clone>(&self, event: &str, data: T)`: Emits an event with associated data, triggering the registered event handlers for that event.
++ `fn emit(&self, event: &str, data: Box<dyn Any>)`: Emits an event with associated data, triggering the registered event handlers for that event.
 
 `EventHandler`
-+ `new<F>(handler: F) -> Self`: Creates a new event handler with the provided closure.
++ `fn new(handler: fn(T)) -> Self`: Creates a new event handler with the provided closure.
 
 ### Examples
 ```rust
