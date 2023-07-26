@@ -11,17 +11,17 @@ pub trait Handle {
 #[derive(Clone)]
 pub struct EventHandler<T: 'static> {
     uuid: Uuid,
-    handler: fn(T),
+    handler: Arc<Box<dyn Fn(T) -> ()>>,
 }
 
 unsafe impl<T> Send for EventHandler<T> {}
 unsafe impl<T> Sync for EventHandler<T> {}
 
 impl<T: Clone> EventHandler<T> {
-    pub fn new(handler: fn(T)) -> Self
+    pub fn new(handler: Box<dyn Fn(T) -> ()>) -> Self
     {
         EventHandler {
-            handler,
+            handler: Arc::new(handler),
             uuid: Uuid::new_v4(),
         }
     }
@@ -90,18 +90,18 @@ mod tests {
         let emitter = EventEmitter::new();
 
         // Define the event handlers
-        let handler1 = EventHandler::new(|(a, b, c): (i32, &str, f64)| {
+        let handler1 = EventHandler::new(Box::new(|(a, b, c): (i32, &str, f64)| {
             println!("event1: {}, {}, {}", a, b, c);
             assert_eq!(a, 42);
             assert_eq!(b, "hello");
             assert_eq!(c, 3.14);
-        });
+        }));
 
-        let handler2 = EventHandler::new(|(name, age): (String, u32)| {
+        let handler2 = EventHandler::new(Box::new(|(name, age): (String, u32)| {
             println!("event2: {}, {}", name, age);
             assert_eq!(name, "John");
             assert_eq!(age, 25);
-        });
+        }));
 
         // Register the event handlers
         emitter.on("event1", Arc::new(handler1.clone()));
