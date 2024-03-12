@@ -1,11 +1,12 @@
 use dashmap::DashMap;
+use std::{any::Any, fmt::Debug, sync::Arc};
 use uuid::Uuid;
-use std::{any::Any, sync::Arc, fmt::Debug};
 
 pub trait Handle {
     fn call(&self, data: &Box<dyn Any>);
-    fn cmp(&self, other: &dyn Handle) -> bool;
+    fn is_same(&self, other: &dyn Handle) -> bool;
     fn id(&self) -> Uuid;
+    fn to_arc(&self) -> Arc<dyn Handle>;
 }
 
 #[derive(Clone)]
@@ -18,8 +19,7 @@ unsafe impl<T> Send for EventHandler<T> {}
 unsafe impl<T> Sync for EventHandler<T> {}
 
 impl<T: Clone> EventHandler<T> {
-    pub fn new(handler: Box<dyn Fn(T) -> ()>) -> Self
-    {
+    pub fn new(handler: Box<dyn Fn(T) -> ()>) -> Self {
         EventHandler {
             handler: Arc::new(handler),
             uuid: Uuid::new_v4(),
@@ -27,7 +27,7 @@ impl<T: Clone> EventHandler<T> {
     }
 }
 
-impl<T: Clone + Debug> Handle for EventHandler<T> {
+impl<T: Clone + Debug + 'static> Handle for EventHandler<T> {
     fn call(&self, data: &Box<dyn Any>) {
         if let Some(value) = data.downcast_ref::<T>() {
             (self.handler)(value.clone());
@@ -37,9 +37,13 @@ impl<T: Clone + Debug> Handle for EventHandler<T> {
     fn id(&self) -> Uuid {
         self.uuid
     }
-  
-    fn cmp(&self, other: &dyn Handle) -> bool {
+
+    fn is_same(&self, other: &dyn Handle) -> bool {
         self.id() == other.id()
+    }
+
+    fn to_arc(&self) -> Arc<dyn Handle> {
+        Arc::new(self.clone())
     }
 }
 
@@ -58,16 +62,16 @@ impl EventEmitter {
         }
     }
 
-    pub fn on(&self, event: &'static str, handler: Arc<dyn Handle>) {
+    pub fn on(&self, event: &'static str, handler: &dyn Handle) {
         self.event_handlers
             .entry(event)
             .or_insert(Vec::new())
-            .push(handler);
+            .push(handler.to_arc());
     }
 
-    pub fn off(&self, event: &str, handler: Arc<dyn Handle>) {
+    pub fn off(&self, event: &str, handler: &dyn Handle) {
         if let Some(mut event_handlers) = self.event_handlers.get_mut(event) {
-            event_handlers.retain(|h| !h.cmp(&*handler));
+            event_handlers.retain(|h| !h.is_same(handler));
         }
     }
 
@@ -83,41 +87,68 @@ impl EventEmitter {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::sync::{Arc, Mutex};
+    use std::thread;
+
+    struct TestData {
+        called: bool,
+        value: i32,
+    }
 
     #[test]
-    fn it_works() {
-        // Create a new EventEmitter
+    fn test_event_emitter() {
+        let data = Arc::new(Mutex::new(TestData {
+            called: false,
+            value: 0,
+        }));
+        let data_clone = data.clone();
+
+        let handler = EventHandler::new(Box::new(move |val: i32| {
+            println!("Handler called with value: {}", val);
+            let mut data = data_clone.lock().unwrap();
+            data.called = true;
+            data.value = val;
+        }));
+
         let emitter = EventEmitter::new();
 
-        // Define the event handlers
-        let handler1 = EventHandler::new(Box::new(|(a, b, c): (i32, &str, f64)| {
-            println!("event1: {}, {}, {}", a, b, c);
-            assert_eq!(a, 42);
-            assert_eq!(b, "hello");
-            assert_eq!(c, 3.14);
-        }));
+        // Register the event handler
+        emitter.on("test_event", &handler);
 
-        let handler2 = EventHandler::new(Box::new(|(name, age): (String, u32)| {
-            println!("event2: {}, {}", name, age);
-            assert_eq!(name, "John");
-            assert_eq!(age, 25);
-        }));
+        let clone_emitter = emitter.clone();
 
-        // Register the event handlers
-        emitter.on("event1", Arc::new(handler1.clone()));
-        emitter.on("event2", Arc::new(handler2.clone()));
+        let t_handler = thread::spawn(move || {
+            thread::sleep(std::time::Duration::from_millis(100));
+            clone_emitter.emit("test_event", Box::new(42));
+        });
 
-        // Emit events
-        emitter.emit("event1", Box::new((42, "hello", 3.14)));
-        emitter.emit("event2", Box::new(("John".to_string(), 25 as u32)));
+        t_handler.join().unwrap();
 
-        // Unregister event handlers
-        emitter.off("event1", Arc::new(handler1));
-        emitter.off("event2", Arc::new(handler2)); 
+        {
+            let data = data.lock().unwrap();
 
-        // Emit events again, but handlers should not be called
-        emitter.emit("event1", Box::new((41, "world", 2.71)));
-        emitter.emit("event2", Box::new(("Alice".to_string(), 30 as u32)));
+            println!("{:?}", data.called);
+            // Check if the handler was called and the value was set correctly
+            assert!(data.called);
+            assert_eq!(data.value, 42);
+        }
+
+        // Remove the event handler
+        emitter.off("test_event", &handler);
+
+        // Reset the test data
+        {
+            let mut data = data.lock().unwrap();
+            data.called = false;
+            data.value = 0;
+        }
+
+        // Emit the event again
+        emitter.emit("test_event", Box::new(24));
+
+        // Verify the handler was not called after being removed
+        let data = data.lock().unwrap();
+        assert!(!data.called);
+        assert_eq!(data.value, 0);
     }
 }
- 

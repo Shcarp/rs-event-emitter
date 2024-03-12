@@ -1,6 +1,6 @@
 [package]
 name = "rs-event-emitter"
-version = "0.0.5"
+version = "1.0.0"
 edition = "2021"
 license = "MIT"
 description = "simulate promise implementation for rust"

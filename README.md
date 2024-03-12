@@ -27,18 +27,21 @@ extern crate rs_event_emitter::*;
 
 ```rust
 // Define the event handlers
-let handler1 = EventHandler::new(Box::new(|(a, b, c): (i32, &str, f64)| {
+let handler = EventHandler::new(Box::new(move |val: i32| {
+    println!("Handler called with value: {}", val);
+    let mut data = data_clone.lock().unwrap();
+    data.called = true;
+    data.value = val;
+}));
+
+// if you have more parameters, you can use a tuple
+let handler = EventHandler::new(Box::new(move |(a, b, c): (i32, &str, f64)| {
     println!("event1: {}, {}, {}", a, b, c);
     assert_eq!(a, 42);
     assert_eq!(b, "hello");
     assert_eq!(c, 3.14);
 }));
 
-let handler2 = EventHandler::new(Box::new(|(name, age): (String, u32)| {
-    println!("event2: {}, {}", name, age);
-    assert_eq!(name, "John");
-    assert_eq!(age, 25);
-}));
 ```
 
 4. Register the event handler for a specific event:
@@ -46,23 +49,20 @@ let handler2 = EventHandler::new(Box::new(|(name, age): (String, u32)| {
 ```rust
 let emitter = EventEmitter::new();
 
-emitter.on("event1", Arc::new(handler1.clone()));
-emitter.on("event2", Arc::new(handler2.clone()));
-
+// Register the event handlers
+emitter.on("test_event", &handler);
 ```
 
 5. Emit an event:
 
 ```rust
-emitter.emit("event1", Box::new((42, "hello", 3.14)));
-emitter.emit("event2", Box::new(("John".to_string(), 25 as u32)));
+emitter.emit("test_event", Box::new(24));
 ```
 
 6. Unregister event handlers using the EventEmitter::off method:
 
 ```rust
-emitter.off("event1", Arc::new(handler1));
-emitter.off("event2", Arc::new(handler2));
+emitter.off("test_event", &handler);
 ```
 
 ### API
@@ -87,37 +87,59 @@ emitter.off("event2", Arc::new(handler2));
 use rs_event_emitter::*;
 
 fn main() {
-    // Create a new EventEmitter
-        let emitter = EventEmitter::new();
+    let data = Arc::new(Mutex::new(TestData {
+        called: false,
+        value: 0,
+    }));
+    let data_clone = data.clone();
 
-        // Define the event handlers
-        let handler1 = EventHandler::new(Box::new(|(a, b, c): (i32, &str, f64)| {
-            println!("event1: {}, {}, {}", a, b, c);
-            assert_eq!(a, 42);
-            assert_eq!(b, "hello");
-            assert_eq!(c, 3.14);
-        }));
+    let handler = EventHandler::new(Box::new(move |val: i32| {
+        println!("Handler called with value: {}", val);
+        let mut data = data_clone.lock().unwrap();
+        data.called = true;
+        data.value = val;
+    }));
 
-        let handler2 = EventHandler::new(Box::new(|(name, age): (String, u32)| {
-            println!("event2: {}, {}", name, age);
-            assert_eq!(name, "John");
-            assert_eq!(age, 25);
-        }));
+    let emitter = EventEmitter::new();
 
-        // Register the event handlers
-        emitter.on("event1", Arc::new(handler1.clone()));
-        emitter.on("event2", Arc::new(handler2.clone()));
-        // Emit events
-        emitter.emit("event1", Box::new((42, "hello", 3.14)));
-        emitter.emit("event2", Box::new(("John".to_string(), 25 as u32)));
+    // Register the event handler
+    emitter.on("test_event", &handler);
 
-        // Unregister event handlers
-        emitter.off("event1", Arc::new(handler1));
-        emitter.off("event2", Arc::new(handler2));
+    let clone_emitter = emitter.clone();
 
-        // Emit events again, but handlers should not be called
-        emitter.emit("event1", Box::new((42, "hello", 3.14)));
-        emitter.emit("event2", Box::new(("John".to_string(), 26 as u32)));
+    let t_handler = thread::spawn(move || {
+        thread::sleep(std::time::Duration::from_millis(100));
+        clone_emitter.emit("test_event", Box::new(42));
+    });
+
+    t_handler.join().unwrap();
+
+    {
+        let data = data.lock().unwrap();
+
+        println!("{:?}", data.called);
+        // Check if the handler was called and the value was set correctly
+        assert!(data.called);
+        assert_eq!(data.value, 42);
+    }
+
+    // Remove the event handler
+    emitter.off("test_event", &handler);
+
+    // Reset the test data
+    {
+        let mut data = data.lock().unwrap();
+        data.called = false;
+        data.value = 0;
+    }
+
+    // Emit the event again
+    emitter.emit("test_event", Box::new(24));
+
+    // Verify the handler was not called after being removed
+    let data = data.lock().unwrap();
+    assert!(!data.called);
+    assert_eq!(data.value, 0);
 }
 ```
 
