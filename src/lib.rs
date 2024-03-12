@@ -1,5 +1,5 @@
 use dashmap::DashMap;
-use std::{any::Any, fmt::Debug, sync::Arc};
+use std::{any::Any, sync::Arc};
 use uuid::Uuid;
 
 pub trait Handle {
@@ -18,7 +18,7 @@ pub struct EventHandler<T: 'static> {
 unsafe impl<T> Send for EventHandler<T> {}
 unsafe impl<T> Sync for EventHandler<T> {}
 
-impl<T: Clone> EventHandler<T> {
+impl<T: Clone + Send + Sync> EventHandler<T> {
     pub fn new(handler: Box<dyn Fn(T) -> ()>) -> Self {
         EventHandler {
             handler: Arc::new(handler),
@@ -27,7 +27,7 @@ impl<T: Clone> EventHandler<T> {
     }
 }
 
-impl<T: Clone + Debug + 'static> Handle for EventHandler<T> {
+impl<T: Clone + Send + Sync> Handle for EventHandler<T> {
     fn call(&self, data: &Box<dyn Any>) {
         if let Some(value) = data.downcast_ref::<T>() {
             (self.handler)(value.clone());
