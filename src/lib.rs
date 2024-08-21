@@ -1,154 +1,273 @@
-use dashmap::DashMap;
-use std::{any::Any, sync::Arc};
-use uuid::Uuid;
+use std::any::Any;
+use std::collections::HashMap;
+use std::sync::{Arc, Mutex};
+use std::thread;
+use std::sync::mpsc::{channel, Sender, Receiver};
 
-pub trait Handle {
-    fn call(&self, data: &Box<dyn Any>);
-    fn is_same(&self, other: &dyn Handle) -> bool;
-    fn id(&self) -> Uuid;
-    fn to_arc(&self) -> Arc<dyn Handle>;
-}
+type ArcAny = Arc<dyn Any + Send + Sync>;
+type BoxedHandler = Arc<dyn Fn(&[ArcAny]) + Send + Sync>;
 
-#[derive(Clone)]
-pub struct EventHandler<T: 'static> {
-    uuid: Uuid,
-    handler: Arc<Box<dyn Fn(T) -> ()>>,
-}
-
-unsafe impl<T> Send for EventHandler<T> {}
-unsafe impl<T> Sync for EventHandler<T> {}
-
-impl<T: Clone + Send + Sync> EventHandler<T> {
-    pub fn new(handler: Box<dyn Fn(T) -> ()>) -> Self {
-        EventHandler {
-            handler: Arc::new(handler),
-            uuid: Uuid::new_v4(),
-        }
-    }
-}
-
-impl<T: Clone + Send + Sync> Handle for EventHandler<T> {
-    fn call(&self, data: &Box<dyn Any>) {
-        if let Some(value) = data.downcast_ref::<T>() {
-            (self.handler)(value.clone());
-        }
-    }
-
-    fn id(&self) -> Uuid {
-        self.uuid
-    }
-
-    fn is_same(&self, other: &dyn Handle) -> bool {
-        self.id() == other.id()
-    }
-
-    fn to_arc(&self) -> Arc<dyn Handle> {
-        Arc::new(self.clone())
-    }
-}
-
-#[derive(Clone)]
 pub struct EventEmitter {
-    event_handlers: Arc<DashMap<&'static str, Vec<Arc<dyn Handle>>>>,
+    handlers: Arc<Mutex<HashMap<String, Vec<BoxedHandler>>>>,
+    sender: Sender<(String, Vec<ArcAny>)>,
+    receiver: Arc<Mutex<Receiver<(String, Vec<ArcAny>)>>>,
 }
-
-unsafe impl Send for EventEmitter {}
-unsafe impl Sync for EventEmitter {}
 
 impl EventEmitter {
     pub fn new() -> Self {
+        let (sender, receiver) = channel();
         EventEmitter {
-            event_handlers: Arc::new(DashMap::new()),
+            handlers: Arc::new(Mutex::new(HashMap::new())),
+            sender,
+            receiver: Arc::new(Mutex::new(receiver)),
         }
     }
 
-    pub fn on(&self, event: &'static str, handler: &dyn Handle) {
-        self.event_handlers
-            .entry(event)
-            .or_insert(Vec::new())
-            .push(handler.to_arc());
+    pub fn on<F, Args>(&self, event: &str, handler: F)
+    where
+        F: Fn(Args) + Send + Sync + 'static,
+        Args: FromArgs + 'static,
+    {
+        let boxed_handler: BoxedHandler = Arc::new(move |args: &[ArcAny]| {
+            if let Some(typed_args) = Args::from_args(args) {
+                handler(typed_args);
+            }
+        });
+
+        let mut handlers = self.handlers.lock().unwrap();
+        handlers
+            .entry(event.to_string())
+            .or_insert_with(Vec::new)
+            .push(boxed_handler);
+    }
+    pub fn emit(&self, event: &str, args: Vec<ArcAny>) {
+        let _ = self.sender.send((event.to_string(), args));
     }
 
-    pub fn off(&self, event: &str, handler: &dyn Handle) {
-        if let Some(mut event_handlers) = self.event_handlers.get_mut(event) {
-            event_handlers.retain(|h| !h.is_same(handler));
+    pub fn start_listening(&self) -> thread::JoinHandle<()> {
+        let handlers = Arc::clone(&self.handlers);
+        let receiver = Arc::clone(&self.receiver);
+        thread::spawn(move || {
+            loop {
+                let (event, args) = receiver.lock().unwrap().recv().unwrap();
+                let handlers = handlers.lock().unwrap();
+                if let Some(event_handlers) = handlers.get(&event) {
+                    for handler in event_handlers {
+                        let handler = Arc::clone(handler);
+                        let args = args.clone();
+                        thread::spawn(move || {
+                            handler(&args);
+                        });
+                    }
+                }
+            }
+        })
+    }
+
+    pub fn clone(&self) -> Self {
+        EventEmitter {
+            handlers: Arc::clone(&self.handlers),
+            sender: self.sender.clone(),
+            receiver: Arc::clone(&self.receiver),
         }
     }
+}
 
-    pub fn emit(&self, event: &str, data: Box<dyn Any>) {
-        if let Some(event_handlers) = self.event_handlers.get(event) {
-            for handler in event_handlers.iter() {
-                handler.call(&data);
+pub trait FromArgs: Sized {
+    fn from_args(args: &[ArcAny]) -> Option<Self>;
+}
+
+macro_rules! impl_from_args {
+    ($($ty:ident),*) => {
+        impl<$($ty: 'static + Clone),*> FromArgs for ($($ty,)*) {
+            fn from_args(args: &[ArcAny]) -> Option<Self> {
+                let expected_len = count_tts!($($ty)*);
+                if args.len() != expected_len {
+                    return None;
+                }
+                let mut index = 0;
+                (
+                    $(
+                        {
+                            let arg = args[index].downcast_ref::<$ty>()?;
+                            index += 1;
+                            arg.clone()
+                        },
+                    )*
+                ).into()
             }
         }
-    }
+    };
+}
+
+// Helper macro to count the number of type parameters
+macro_rules! count_tts {
+    () => {0};
+    ($head:tt $($tail:tt)*) => {1 + count_tts!($($tail)*)};
+}
+
+
+impl_from_args!(A);
+impl_from_args!(A, B);
+impl_from_args!(A, B, C);
+impl_from_args!(A, B, C, D);
+impl_from_args!(A, B, C, D, E);
+impl_from_args!(A, B, C, D, E, F);
+impl_from_args!(A, B, C, D, E, F, G);
+impl_from_args!(A, B, C, D, E, F, G, H);
+impl_from_args!(A, B, C, D, E, F, G, H, I);
+impl_from_args!(A, B, C, D, E, F, G, H, I, J);
+impl_from_args!(A, B, C, D, E, F, G, H, I, J, K);
+impl_from_args!(A, B, C, D, E, F, G, H, I, J, K, L);
+impl_from_args!(A, B, C, D, E, F, G, H, I, J, K, L, M);
+impl_from_args!(A, B, C, D, E, F, G, H, I, J, K, L, M, N);
+impl_from_args!(A, B, C, D, E, F, G, H, I, J, K, L, M, N, O);
+impl_from_args!(A, B, C, D, E, F, G, H, I, J, K, L, M, N, O, P);
+
+#[macro_export]
+macro_rules! emit {
+    ($emitter:expr, $event:expr, $($arg:expr),*) => {
+        $emitter.emit($event, vec![$(Arc::new($arg) as ArcAny),*])
+    };
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
-    use std::sync::{Arc, Mutex};
-    use std::thread;
+    use std::sync::atomic::{AtomicI32, Ordering};
+    use std::time::Duration;
 
-    struct TestData {
-        called: bool,
-        value: i32,
+    #[test]
+    fn test_basic_event_emission() {
+        let emitter = EventEmitter::new();
+        let _listener = emitter.start_listening();
+
+        let counter = Arc::new(AtomicI32::new(0));
+        let counter_clone = Arc::clone(&counter);
+
+        emitter.on("increment", move |(_,): (i32,)| {
+            counter_clone.fetch_add(1, Ordering::SeqCst);
+        });
+
+        emit!(emitter, "increment", 1);
+        emit!(emitter, "increment", 1);
+
+        // 给一些时间让事件被处理
+        thread::sleep(Duration::from_millis(100));
+
+        assert_eq!(counter.load(Ordering::SeqCst), 2);
     }
 
     #[test]
-    fn test_event_emitter() {
-        let data = Arc::new(Mutex::new(TestData {
-            called: false,
-            value: 0,
-        }));
-        let data_clone = data.clone();
-
-        let handler = EventHandler::new(Box::new(move |val: i32| {
-            println!("Handler called with value: {}", val);
-            let mut data = data_clone.lock().unwrap();
-            data.called = true;
-            data.value = val;
-        }));
-
+    fn test_multiple_event_types() {
         let emitter = EventEmitter::new();
+        let _listener = emitter.start_listening();
 
-        // Register the event handler
-        emitter.on("test_event", &handler);
+        let result = Arc::new(Mutex::new(String::new()));
+        let result_clone1 = Arc::clone(&result);
+        let result_clone2 = Arc::clone(&result);
 
-        let clone_emitter = emitter.clone();
-
-        let t_handler = thread::spawn(move || {
-            thread::sleep(std::time::Duration::from_millis(100));
-            clone_emitter.emit("test_event", Box::new(42));
+        emitter.on("greet", move |(name,): (String,)| {
+            let mut result = result_clone1.lock().unwrap();
+            *result = format!("Hello, {}!", name);
         });
 
-        t_handler.join().unwrap();
+        emitter.on("farewell", move |(name,): (String,)| {
+            let mut result = result_clone2.lock().unwrap();
+            *result = format!("Goodbye, {}!", name);
+        });
 
-        {
-            let data = data.lock().unwrap();
+        emit!(emitter, "greet", "Alice".to_string());
+        thread::sleep(Duration::from_millis(50));
+        assert_eq!(*result.lock().unwrap(), "Hello, Alice!");
 
-            println!("{:?}", data.called);
-            // Check if the handler was called and the value was set correctly
-            assert!(data.called);
-            assert_eq!(data.value, 42);
+        emit!(emitter, "farewell", "Bob".to_string());
+        thread::sleep(Duration::from_millis(50));
+        assert_eq!(*result.lock().unwrap(), "Goodbye, Bob!");
+    }
+
+    #[test]
+    fn test_multiple_handlers() {
+        let emitter = EventEmitter::new();
+        let _listener = emitter.start_listening();
+
+        let counter1 = Arc::new(AtomicI32::new(0));
+        let counter2 = Arc::new(AtomicI32::new(0));
+        let counter1_clone = Arc::clone(&counter1);
+        let counter2_clone = Arc::clone(&counter2);
+
+        emitter.on("increment", move |(_,): (i32,)| {
+            counter1_clone.fetch_add(1, Ordering::SeqCst);
+        });
+
+        emitter.on("increment", move |(_,): (i32,)| {
+            counter2_clone.fetch_add(2, Ordering::SeqCst);
+        });
+
+        emit!(emitter, "increment", 1);
+
+        thread::sleep(Duration::from_millis(100));
+
+        assert_eq!(counter1.load(Ordering::SeqCst), 1);
+        assert_eq!(counter2.load(Ordering::SeqCst), 2);
+    }
+
+    #[test]
+    fn test_multi_threaded_emission() {
+        let emitter = EventEmitter::new();
+        let _listener = emitter.start_listening();
+
+        let counter = Arc::new(AtomicI32::new(0));
+        let counter_clone = Arc::clone(&counter);
+
+        emitter.on("increment", move |(_,): (i32,)| {
+            counter_clone.fetch_add(1, Ordering::SeqCst);
+        });
+
+        let emitter_clone = emitter.clone();
+        let handle = thread::spawn(move || {
+            for _ in 0..50 {
+                emit!(emitter_clone, "increment", 1);
+            }
+        });
+
+        for _ in 0..50 {
+            emit!(emitter, "increment", 1);
         }
 
-        // Remove the event handler
-        emitter.off("test_event", &handler);
+        handle.join().unwrap();
 
-        // Reset the test data
-        {
-            let mut data = data.lock().unwrap();
-            data.called = false;
-            data.value = 0;
-        }
+        thread::sleep(Duration::from_millis(200));
 
-        // Emit the event again
-        emitter.emit("test_event", Box::new(24));
+        assert_eq!(counter.load(Ordering::SeqCst), 100);
+    }
 
-        // Verify the handler was not called after being removed
-        let data = data.lock().unwrap();
-        assert!(!data.called);
-        assert_eq!(data.value, 0);
+    #[test]
+    fn test_event_with_multiple_arguments() {
+        let emitter = EventEmitter::new();
+        let _listener = emitter.start_listening();
+
+        let result = Arc::new(Mutex::new(String::new()));
+        let result_clone = Arc::clone(&result);
+
+        emitter.on("person_info", move |(name, age, city, is_student, gpa): (String, i32, String, bool, f32)| {
+            let mut result = result_clone.lock().unwrap();
+            *result = format!("{} is {} years old, lives in {}, student status: {}, GPA: {:.2}", 
+                            name, age, city, if is_student { "Yes" } else { "No" }, gpa);
+        });
+
+        emit!(emitter, "person_info", 
+            "Alice".to_string(), 
+            30, 
+            "New York".to_string(), 
+            true, 
+            3.75f32
+        );
+
+        // 给一些时间让事件被处理
+        thread::sleep(Duration::from_millis(100));
+
+        assert_eq!(*result.lock().unwrap(), 
+                "Alice is 30 years old, lives in New York, student status: Yes, GPA: 3.75");
     }
 }

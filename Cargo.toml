@@ -1,15 +1,12 @@
 [package]
 name = "rs-event-emitter"
-version = "1.0.1"
+version = "2.0.0"
 edition = "2021"
 license = "MIT"
 description = "simulate promise implementation for rust"
 repository = "https://github.com/Shcarp/rs-event-emitter.git"
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
-
-[dependencies]
-dashmap = "5.4.0"
 
 [dependencies.uuid]
 version = "1.4.1"
