@@ -16,7 +16,7 @@ Add this to your `Cargo.toml`:
 
 ```toml
 [dependencies]
-event_emitter = "2.0.0"  # Replace with the actual version
+event_emitter = "2.0.1"  # Replace with the actual version
 ```
 
 ## Usage
