@@ -5,6 +5,7 @@ use std::thread;
 use std::sync::mpsc::{channel, Sender, Receiver};
 use std::sync::mpsc::RecvTimeoutError;
 use std::time::Duration;
+use threadpool::ThreadPool;
 
 type ArcAny = Arc<dyn Any + Send + Sync>;
 type HandlerId = usize;
@@ -17,20 +18,25 @@ pub struct EventEmitter {
     next_id: Arc<Mutex<HandlerId>>,
     stop_sender: Sender<()>,
     stop_receiver: Arc<Mutex<Receiver<()>>>,
+    thread_pool: Arc<ThreadPool>,
 }
 
 impl EventEmitter {
     pub fn new() -> Self {
+        Self::with_thread_pool_size(num_cpus::get())
+    }
+
+    pub fn with_thread_pool_size(thread_pool_size: usize) -> Self {
         let (sender, receiver) = channel();
         let (stop_sender, stop_receiver) = channel();
         EventEmitter {
             handlers: Arc::new(Mutex::new(HashMap::new())),
-            sender,
             receiver: Arc::new(Mutex::new(receiver)),
-            next_id: Arc::new(Mutex::new(0)),
-            // running: Arc::new(AtomicBool::new(true)),
+            sender,
             stop_sender,
             stop_receiver: Arc::new(Mutex::new(stop_receiver)),
+            thread_pool: Arc::new(ThreadPool::new(thread_pool_size)),
+            next_id: Arc::new(Mutex::new(0)),
         }
     }
 
@@ -76,8 +82,8 @@ impl EventEmitter {
     pub fn start_listening(&self) -> thread::JoinHandle<()> {
         let handlers = Arc::clone(&self.handlers);
         let receiver = Arc::clone(&self.receiver);
-
         let stop_receiver = Arc::clone(&self.stop_receiver);
+        let thread_pool = Arc::clone(&self.thread_pool);
 
         thread::spawn(move || {
             loop {
@@ -96,7 +102,11 @@ impl EventEmitter {
 
                         if let Some(event_handlers) = event_handlers {
                             for (_, handler) in event_handlers {
-                                handler(&args);
+                                let handler = Arc::clone(&handler);
+                                let args = args.clone();
+                                thread_pool.execute(move || {
+                                    handler(&args);
+                                });
                             }
                         }
                     },
@@ -108,6 +118,7 @@ impl EventEmitter {
                 }
             }
             println!("Event listener stopped");
+            thread_pool.join();
         })
     }
 
@@ -123,6 +134,7 @@ impl EventEmitter {
             next_id: Arc::clone(&self.next_id),
             stop_sender: self.stop_sender.clone(),
             stop_receiver: Arc::clone(&self.stop_receiver),
+            thread_pool: Arc::clone(&self.thread_pool),
         }
     }
 }
@@ -222,6 +234,14 @@ mod tests {
     use std::sync::atomic::{AtomicI32, Ordering};
     use std::time::Duration;
 
+    #[derive(Clone, Debug, PartialEq)]
+    struct ComplexData {
+        id: usize,
+        name: String,
+        data: Vec<f64>,
+        metadata: HashMap<String, String>,
+    }
+
     #[test]
     fn test_basic_event_emission() {
         let emitter = EventEmitter::new();
@@ -299,7 +319,7 @@ mod tests {
 
     #[test]
     fn test_multi_threaded_emission() {
-        let emitter = EventEmitter::new();
+        let emitter = EventEmitter::with_thread_pool_size(4);
         let _listener = emitter.start_listening();
 
         let counter = Arc::new(AtomicI32::new(0));
@@ -497,5 +517,110 @@ mod tests {
     
         // Wait for the listener thread to finish
         listener.join().unwrap();
+    }
+
+
+    #[test]
+    fn test_complex_event_emitter() {
+        let emitter = Arc::new(EventEmitter::new()); // 使用4个线程的线程池
+        let listener = emitter.start_listening();
+
+        // 用于收集结果的共享数据结构
+        let results = Arc::new(Mutex::new(Vec::new()));
+
+        // 测试简单类型
+        {
+            let results_clone = Arc::clone(&results);
+            emitter.on("simple", move |(x, y): (i32, String)| {
+                let mut results = results_clone.lock().unwrap();
+                results.push(format!("Simple: {} - {}", x, y));
+            });
+        }
+
+        // 测试复杂类型
+        {
+            let results_clone = Arc::clone(&results);
+            emitter.on("complex", move |(data,): (ComplexData,)| {
+                let mut results = results_clone.lock().unwrap();
+                results.push(format!("Complex: {} - {}", data.id, data.name));
+            });
+        }
+
+        // 测试多参数
+        {
+            let results_clone = Arc::clone(&results);
+            emitter.on("multi", move |(a, b, c, d): (i32, String, f64, bool)| {
+                let mut results = results_clone.lock().unwrap();
+                results.push(format!("Multi: {} {} {} {}", a, b, c, d));
+            });
+        }
+
+        // 发射事件
+        emit!(emitter, "simple", 42, "Hello".to_string());
+
+        let complex_data = ComplexData {
+            id: 1,
+            name: "Test".to_string(),
+            data: vec![1.0, 2.0, 3.0],
+            metadata: {
+                let mut map = HashMap::new();
+                map.insert("key".to_string(), "value".to_string());
+                map
+            },
+        };
+        emit!(emitter, "complex", complex_data);
+
+        emit!(emitter, "multi", 10, "Test".to_string(), 3.14, true);
+
+        // 测试多线程发射
+        let emitter_clone = Arc::clone(&emitter);
+        let handle = thread::spawn(move || {
+            for i in 0..5 {
+                emit!(emitter_clone, "simple", i, format!("Thread {}", i));
+                thread::sleep(Duration::from_millis(10));
+            }
+        });
+
+        // 等待所有事件处理完成
+        handle.join().unwrap();
+        thread::sleep(Duration::from_millis(100));
+
+        // 停止监听
+        emitter.stop_listening();
+        listener.join().unwrap();
+
+        // 验证结果
+        let results = results.lock().unwrap();
+        assert_eq!(results.len(), 8); // 3 initial events + 5 from thread
+
+        assert!(results.contains(&"Simple: 42 - Hello".to_string()));
+        assert!(results.contains(&"Complex: 1 - Test".to_string()));
+        assert!(results.contains(&"Multi: 10 Test 3.14 true".to_string()));
+
+        for i in 0..5 {
+            assert!(results.contains(&format!("Simple: {} - Thread {}", i, i)));
+        }
+
+        // 测试 off 方法
+        let emitter = EventEmitter::new();
+        let _listener = emitter.start_listening();
+        let counter = Arc::new(AtomicI32::new(0));
+        let counter_clone = Arc::clone(&counter);
+
+        let handler_id = emitter.on("increment", move |(_,): (i32,)| {
+            counter_clone.fetch_add(1, Ordering::SeqCst);
+        });
+
+        emit!(emitter, "increment", 1);
+        emit!(emitter, "increment", 1);
+        thread::sleep(Duration::from_millis(10));
+
+        emitter.off("increment", handler_id);
+
+        emit!(emitter, "increment", 1);
+
+        thread::sleep(Duration::from_millis(100));
+
+        assert_eq!(counter.load(Ordering::SeqCst), 2);
     }
 }

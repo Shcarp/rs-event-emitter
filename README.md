@@ -16,7 +16,7 @@ Add this to your `Cargo.toml`:
 
 ```toml
 [dependencies]
-event_emitter = "2.0.1"  # Replace with the actual version
+event_emitter = "2.0.2"  # Replace with the actual version
 ```
 
 ## Usage
@@ -34,7 +34,7 @@ fn main() {
     let emitter = EventEmitter::new();
     
     // Start the event listener in a separate thread
-    let _listener = emitter.start_listening();
+    let listener = emitter.start_listening();
 
     // Create a shared state to demonstrate thread-safe updates
     let shared_state = Arc::new(Mutex::new(Vec::new()));
@@ -91,7 +91,7 @@ fn main() {
 
     // Stop the event listener
     emitter.stop_listening();
-    _listener.join().unwrap();
+    listener.join().unwrap();
 }
 ```
 
@@ -116,6 +116,7 @@ The main struct for managing events.
 #### Methods
 
 - `new()`: Create a new `EventEmitter`.
+- `with_thread_pool_size(thread_pool_size: usize)`: Create a new `EventEmitter` with a specified capacity.
 - `on<F, Args>(&self, event: &str, handler: F) -> HandlerId`: Register an event handler.
 - `off(&self, event: &str, handler_id: HandlerId)`: Remove all handlers for an event.
 - `emit(&self, event: &str, args: Vec<ArcAny>)`: Emit an event.
