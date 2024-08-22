@@ -88,6 +88,10 @@ fn main() {
     // Print the final state
     let final_state = shared_state.lock().unwrap();
     println!("Final state: {:?}", *final_state);
+
+    // Stop the event listener
+    emitter.stop_listening();
+    _listener.join().unwrap();
 }
 ```
 
@@ -112,9 +116,11 @@ The main struct for managing events.
 #### Methods
 
 - `new()`: Create a new `EventEmitter`.
-- `on<F, Args>(&self, event: &str, handler: F)`: Register an event handler.
+- `on<F, Args>(&self, event: &str, handler: F) -> HandlerId`: Register an event handler.
+- `off(&self, event: &str, handler_id: HandlerId)`: Remove all handlers for an event.
 - `emit(&self, event: &str, args: Vec<ArcAny>)`: Emit an event.
 - `start_listening(&self) -> JoinHandle<()>`: Start the event processing loop.
+- `stop_listening(&self)`: Stop the event processing loop.
 - `clone(&self) -> Self`: Create a clone of the `EventEmitter`.
 
 ### Event Parameters

@@ -3,43 +3,72 @@ use std::collections::HashMap;
 use std::sync::{Arc, Mutex};
 use std::thread;
 use std::sync::mpsc::{channel, Sender, Receiver};
+use std::sync::mpsc::RecvTimeoutError;
+use std::time::Duration;
 
 type ArcAny = Arc<dyn Any + Send + Sync>;
-type BoxedHandler = Arc<dyn Fn(&[ArcAny]) + Send + Sync>;
+type HandlerId = usize;
+type BoxedHandler = (HandlerId, Arc<dyn Fn(&[ArcAny]) + Send + Sync>);
 
 pub struct EventEmitter {
     handlers: Arc<Mutex<HashMap<String, Vec<BoxedHandler>>>>,
     sender: Sender<(String, Vec<ArcAny>)>,
     receiver: Arc<Mutex<Receiver<(String, Vec<ArcAny>)>>>,
+    next_id: Arc<Mutex<HandlerId>>,
+    stop_sender: Sender<()>,
+    stop_receiver: Arc<Mutex<Receiver<()>>>,
 }
 
 impl EventEmitter {
     pub fn new() -> Self {
         let (sender, receiver) = channel();
+        let (stop_sender, stop_receiver) = channel();
         EventEmitter {
             handlers: Arc::new(Mutex::new(HashMap::new())),
             sender,
             receiver: Arc::new(Mutex::new(receiver)),
+            next_id: Arc::new(Mutex::new(0)),
+            // running: Arc::new(AtomicBool::new(true)),
+            stop_sender,
+            stop_receiver: Arc::new(Mutex::new(stop_receiver)),
         }
     }
 
-    pub fn on<F, Args>(&self, event: &str, handler: F)
+    pub fn on<F, Args>(&self, event: &str, handler: F) -> HandlerId
     where
         F: Fn(Args) + Send + Sync + 'static,
         Args: FromArgs + 'static,
     {
-        let boxed_handler: BoxedHandler = Arc::new(move |args: &[ArcAny]| {
+        let handler_id = {
+            let mut next_id = self.next_id.lock().unwrap();
+            *next_id += 1;
+            *next_id
+        };
+        let boxed_handler: BoxedHandler = (handler_id, Arc::new(move |args: &[ArcAny]| {
             if let Some(typed_args) = Args::from_args(args) {
                 handler(typed_args);
             }
-        });
+        }));
 
         let mut handlers = self.handlers.lock().unwrap();
         handlers
             .entry(event.to_string())
             .or_insert_with(Vec::new)
             .push(boxed_handler);
+
+        handler_id
     }
+
+    pub fn off(&self, event: &str, handler_id: HandlerId)
+    {
+        let mut handlers = self.handlers.lock().unwrap();
+        if let Some(event_handlers) = handlers.get_mut(event) {
+            event_handlers.retain(|(id, _)| {
+                *id != handler_id
+            });
+        }
+    }
+
     pub fn emit(&self, event: &str, args: Vec<ArcAny>) {
         let _ = self.sender.send((event.to_string(), args));
     }
@@ -47,21 +76,43 @@ impl EventEmitter {
     pub fn start_listening(&self) -> thread::JoinHandle<()> {
         let handlers = Arc::clone(&self.handlers);
         let receiver = Arc::clone(&self.receiver);
+
+        let stop_receiver = Arc::clone(&self.stop_receiver);
+
         thread::spawn(move || {
             loop {
-                let (event, args) = receiver.lock().unwrap().recv().unwrap();
-                let handlers = handlers.lock().unwrap();
-                if let Some(event_handlers) = handlers.get(&event) {
-                    for handler in event_handlers {
-                        let handler = Arc::clone(handler);
-                        let args = args.clone();
-                        thread::spawn(move || {
-                            handler(&args);
-                        });
+                // 使用 select 来同时等待事件和停止信号
+                if let Ok(_) = stop_receiver.lock().unwrap().try_recv() {
+                    println!("Stop signal received, stopping listener");
+                    break;
+                }
+
+                match receiver.lock().unwrap().recv_timeout(Duration::from_millis(10)) {
+                    Ok((event, args)) => {
+                        let event_handlers = {
+                            let handlers = handlers.lock().unwrap();
+                            handlers.get(&event).cloned()
+                        };
+
+                        if let Some(event_handlers) = event_handlers {
+                            for (_, handler) in event_handlers {
+                                handler(&args);
+                            }
+                        }
+                    },
+                    Err(RecvTimeoutError::Timeout) => continue,
+                    Err(RecvTimeoutError::Disconnected) => {
+                        println!("Channel disconnected, stopping listener");
+                        break;
                     }
                 }
             }
+            println!("Event listener stopped");
         })
+    }
+
+    pub fn stop_listening(&self) {
+        let _ = self.stop_sender.send(());
     }
 
     pub fn clone(&self) -> Self {
@@ -69,12 +120,45 @@ impl EventEmitter {
             handlers: Arc::clone(&self.handlers),
             sender: self.sender.clone(),
             receiver: Arc::clone(&self.receiver),
+            next_id: Arc::clone(&self.next_id),
+            stop_sender: self.stop_sender.clone(),
+            stop_receiver: Arc::clone(&self.stop_receiver),
         }
     }
 }
 
 pub trait FromArgs: Sized {
     fn from_args(args: &[ArcAny]) -> Option<Self>;
+}
+
+macro_rules! to_lowercase {
+    (A) => { "a" };
+    (B) => { "b" };
+    (C) => { "c" };
+    (D) => { "d" };
+    (E) => { "e" };
+    (F) => { "f" };
+    (G) => { "g" };
+    (H) => { "h" };
+    (I) => { "i" };
+    (J) => { "j" };
+    (K) => { "k" };
+    (L) => { "l" };
+    (M) => { "m" };
+    (N) => { "n" };
+    (O) => { "o" };
+    (P) => { "p" };
+    (Q) => { "q" };
+    (R) => { "r" };
+    (S) => { "s" };
+    (T) => { "t" };
+    (U) => { "u" };
+    (V) => { "v" };
+    (W) => { "w" };
+    (X) => { "x" };
+    (Y) => { "y" };
+    (Z) => { "z" };
+    ($other:ident) => { stringify!($other) };
 }
 
 macro_rules! impl_from_args {
@@ -85,27 +169,28 @@ macro_rules! impl_from_args {
                 if args.len() != expected_len {
                     return None;
                 }
-                let mut index = 0;
-                (
+                Some((
                     $(
-                        {
-                            let arg = args[index].downcast_ref::<$ty>()?;
-                            index += 1;
-                            arg.clone()
-                        },
+                        args.get(idx_from_args!($ty))?.downcast_ref::<$ty>()?.clone(),
                     )*
-                ).into()
+                ))
             }
         }
     };
 }
 
-// Helper macro to count the number of type parameters
+macro_rules! idx_from_args {
+    ($ty:ident) => {{
+        const LOWERCASE: &str = to_lowercase!($ty);
+        let idx = LOWERCASE.as_bytes()[0].wrapping_sub(b'a') as usize;
+        if idx >= 26 { panic!("Invalid type name for FromArgs: {}", stringify!($ty)); }
+        idx
+    }};
+}
 macro_rules! count_tts {
     () => {0};
     ($head:tt $($tail:tt)*) => {1 + count_tts!($($tail)*)};
 }
-
 
 impl_from_args!(A);
 impl_from_args!(A, B);
@@ -269,5 +354,148 @@ mod tests {
 
         assert_eq!(*result.lock().unwrap(), 
                 "Alice is 30 years old, lives in New York, student status: Yes, GPA: 3.75");
+    }
+
+    #[test]
+    fn test_event_with_off_multithreaded() {
+        let emitter = Arc::new(EventEmitter::new());
+        let _listener = emitter.start_listening();
+    
+        let counter = Arc::new(AtomicI32::new(0));
+        let counter_clone = Arc::clone(&counter);
+    
+        let handler_id = emitter.on("increment", move |(value,): (i32,)| {
+            counter_clone.fetch_add(value, Ordering::SeqCst);
+        });
+
+        let total_events = 100; // 5 threads * 20 events each
+        let events_before_off = 50; // We'll remove the handler halfway through
+    
+        // Spawn multiple threads to emit events
+        let mut handles = vec![];
+        for _ in 0..5 {
+            let emitter_clone = Arc::clone(&emitter);
+            let handle = thread::spawn(move || {
+                for i in 0..20 {
+                    emit!(emitter_clone, "increment", 1);
+                    if i == 9 { // Pause halfway through to allow for handler removal
+                        thread::sleep(Duration::from_millis(50));
+                    }
+                    thread::sleep(Duration::from_millis(1));
+                }
+            });
+            handles.push(handle);
+        }
+    
+        // Wait a bit, then remove the handler
+        thread::sleep(Duration::from_millis(50));
+        emitter.off("increment", handler_id);
+    
+        // Wait for all threads to finishhandler
+        for handle in handles {
+            handle.join().unwrap();
+        }
+    
+        // Give some time for any remaining events to be processed
+        thread::sleep(Duration::from_millis(100));
+    
+        let final_count = counter.load(Ordering::SeqCst);
+        println!("Final count: {}", final_count);
+    
+        // The final count should be greater than events_before_off but less than total_events
+        assert!(
+            final_count >= events_before_off && final_count < total_events,
+            "Final count was {}, expected between {} and {}",
+            final_count,
+            events_before_off,
+            total_events
+        );
+    
+            // Emit more events after removing the handler
+        for _ in 0..20 {
+            emit!(emitter, "increment", 1);
+        }
+
+        thread::sleep(Duration::from_millis(100));
+
+        // The count should not have changed
+        assert_eq!(
+            counter.load(Ordering::SeqCst),
+            final_count,
+            "Counter changed after handler was removed"
+        );
+    }
+
+    #[test]
+    fn test_event_with_off_listening() {
+        let emitter = Arc::new(EventEmitter::new());
+        let listener = emitter.start_listening();
+    
+        let counter = Arc::new(AtomicI32::new(0));
+        let counter_clone = Arc::clone(&counter);
+        
+        let handler_id = emitter.on("increment", move |(value,): (i32,)| {
+            counter_clone.fetch_add(value, Ordering::SeqCst);
+        });
+    
+        // Emit some events
+        for _ in 0..20 {
+            emit!(emitter, "increment", 1);
+        }
+    
+        // Wait a bit, then stop listening
+        thread::sleep(Duration::from_millis(50));
+
+        println!("Stopping listening {}", counter.load(Ordering::SeqCst));
+
+        emitter.stop_listening();
+
+        // Give some time for the listener thread to stop
+        thread::sleep(Duration::from_millis(10));
+
+        // Emit more events after stopping listening
+        for _ in 0..20 {
+            emit!(emitter, "increment", 1);
+        }
+    
+        // Give some time for any remaining events to be processed
+        thread::sleep(Duration::from_millis(100));
+    
+        // The count should not have changed
+        assert_eq!(
+            counter.load(Ordering::SeqCst),
+            20,
+            "Counter changed after stopping listening"
+        );
+    
+        // Emit more events after stopping listening
+        for _ in 0..20 {
+            emit!(emitter, "increment", 1);
+        }
+    
+        // The count should not have changed
+        assert_eq!(
+            counter.load(Ordering::SeqCst),
+            20,
+            "Counter changed after stopping listening"
+        );
+    
+        // Remove the handler
+        emitter.off("increment", handler_id);
+    
+        // Emit more events after removing the handler
+        for _ in 0..20 {
+            emit!(emitter, "increment", 1);
+        }
+    
+        // The count should not have changed
+        assert_eq!(
+            counter.load(Ordering::SeqCst),
+            20,
+            "Counter changed after handler was removed"
+        );
+    
+        // Wait for the listener thread to finish
+        listener.join().unwrap();
     }
 }
