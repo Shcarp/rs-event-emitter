@@ -1,4 +1,5 @@
-use crate::{impl_from_args, ArcAny};
+use crate::types::ArcAny;
+use crate::impl_from_args;
 pub trait FromArgs: Sized {
     fn from_args(args: &[ArcAny]) -> Option<Self>;
 }
