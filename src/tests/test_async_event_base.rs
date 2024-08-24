@@ -1,10 +1,14 @@
-
-use std::{panic, sync::{atomic::{AtomicI32, Ordering}, Arc}};
-use tokio::time::{sleep, Duration};
+use crate::{async_emit, AsyncEventEmitter};
 use futures::future::join_all;
 use runtime::TokioRuntime;
-use crate::{async_emit, AsyncEventEmitter};
-
+use std::{
+    panic,
+    sync::{
+        atomic::{AtomicI32, Ordering},
+        Arc,
+    },
+};
+use tokio::time::{sleep, Duration};
 
 #[tokio::test]
 async fn test_on_and_emit() {
@@ -15,12 +19,14 @@ async fn test_on_and_emit() {
 
     let counter_clone = counter.clone();
 
-    emitter.on("test_event", move |_args: ()| {
-        let counter = counter_clone.clone();
-        Box::pin(async move {
-            counter.fetch_add(1, Ordering::SeqCst);
+    emitter
+        .on("test_event", move |_args: ()| {
+            let counter = counter_clone.clone();
+            Box::pin(async move {
+                counter.fetch_add(1, Ordering::SeqCst);
+            })
         })
-    }).await;
+        .await;
 
     emitter.emit("test_event", vec![]).await;
     emitter.emit("test_event", vec![]).await;
@@ -41,19 +47,23 @@ async fn test_multiple_handlers() {
     let counter1_clone = counter1.clone();
     let counter2_clone = counter2.clone();
 
-    emitter.on("test_event", move |_args: ()| {
-        let counter = counter1_clone.clone();
-        Box::pin(async move {
-            counter.fetch_add(1, Ordering::SeqCst);
+    emitter
+        .on("test_event", move |_args: ()| {
+            let counter = counter1_clone.clone();
+            Box::pin(async move {
+                counter.fetch_add(1, Ordering::SeqCst);
+            })
         })
-    }).await;
+        .await;
 
-    emitter.on("test_event", move |_args: ()| {
-        let counter = counter2_clone.clone();
-        Box::pin(async move {
-            counter.fetch_add(2, Ordering::SeqCst);
+    emitter
+        .on("test_event", move |_args: ()| {
+            let counter = counter2_clone.clone();
+            Box::pin(async move {
+                counter.fetch_add(2, Ordering::SeqCst);
+            })
         })
-    }).await;
+        .await;
 
     emitter.emit("test_event", vec![]).await;
 
@@ -61,7 +71,6 @@ async fn test_multiple_handlers() {
     assert_eq!(counter1.load(Ordering::SeqCst), 1);
     assert_eq!(counter2.load(Ordering::SeqCst), 2);
 }
-
 
 #[tokio::test]
 async fn test_off() {
@@ -71,12 +80,14 @@ async fn test_off() {
     let counter = Arc::new(AtomicI32::new(0));
     let counter_clone = counter.clone();
 
-    let handler_id = emitter.on("test_event", move |_args: ()| {
-        let counter = counter_clone.clone();
-        Box::pin(async move {
-            counter.fetch_add(1, Ordering::SeqCst);
+    let handler_id = emitter
+        .on("test_event", move |_args: ()| {
+            let counter = counter_clone.clone();
+            Box::pin(async move {
+                counter.fetch_add(1, Ordering::SeqCst);
+            })
         })
-    }).await;
+        .await;
 
     emitter.emit("test_event", vec![]).await;
     sleep(Duration::from_millis(50)).await;
@@ -96,13 +107,15 @@ async fn test_emit_with_args() {
     let result = Arc::new(tokio::sync::Mutex::new(String::new()));
     let result_clone = result.clone();
 
-    emitter.on("greet", move |args: (String,)| {
-        let result = result_clone.clone();
-        Box::pin(async move {
-            let mut guard = result.lock().await;
-            *guard = format!("Hello, {}!", args.0);
+    emitter
+        .on("greet", move |args: (String,)| {
+            let result = result_clone.clone();
+            Box::pin(async move {
+                let mut guard = result.lock().await;
+                *guard = format!("Hello, {}!", args.0);
+            })
         })
-    }).await;
+        .await;
 
     async_emit!(emitter, "greet", "Alice".to_string());
 
@@ -118,13 +131,15 @@ async fn test_concurrent_emits() {
     let counter = Arc::new(AtomicI32::new(0));
     let counter_clone = counter.clone();
 
-    emitter.on("test_event", move |_args: ()| {
-        let counter = counter_clone.clone();
-        Box::pin(async move {
-            sleep(Duration::from_millis(10)).await; // Simulate some work
-            counter.fetch_add(1, Ordering::SeqCst);
+    emitter
+        .on("test_event", move |_args: ()| {
+            let counter = counter_clone.clone();
+            Box::pin(async move {
+                sleep(Duration::from_millis(10)).await; // Simulate some work
+                counter.fetch_add(1, Ordering::SeqCst);
+            })
         })
-    }).await;
+        .await;
 
     let futures = (0..100).map(|_| emitter.emit("test_event", vec![]));
     join_all(futures).await;
@@ -135,9 +150,10 @@ async fn test_concurrent_emits() {
 
 #[tokio::test]
 async fn test_error_handling() {
-
     fn custom_panic_hook(panic_info: &panic::PanicInfo<'_>) {
-        let location = panic_info.location().unwrap_or_else(|| panic::Location::caller());
+        let location = panic_info
+            .location()
+            .unwrap_or_else(|| panic::Location::caller());
         let message = match panic_info.payload().downcast_ref::<&'static str>() {
             Some(s) => *s,
             None => match panic_info.payload().downcast_ref::<String>() {
@@ -145,20 +161,26 @@ async fn test_error_handling() {
                 None => "Box<dyn Any>",
             },
         };
-        eprintln!("Panic occurred in file '{}' at line {}: {}", location.file(), location.line(), message);
+        eprintln!(
+            "Panic occurred in file '{}' at line {}: {}",
+            location.file(),
+            location.line(),
+            message
+        );
     }
 
     panic::set_hook(Box::new(custom_panic_hook));
-    
 
     let runtime = Arc::new(TokioRuntime::new());
     let emitter = AsyncEventEmitter::new(runtime);
 
-    emitter.on("error_event", |_args: ()| {
-        Box::pin(async {
-            panic!("This handler should panic");
+    emitter
+        .on("error_event", |_args: ()| {
+            Box::pin(async {
+                panic!("This handler should panic");
+            })
         })
-    }).await;
+        .await;
 
     // This should not panic the whole test
     emitter.emit("error_event", vec![]).await;
@@ -178,19 +200,23 @@ async fn test_multiple_events() {
     let counter1_clone = counter1.clone();
     let counter2_clone = counter2.clone();
 
-    emitter.on("event1", move |_args: ()| {
-        let counter = counter1_clone.clone();
-        Box::pin(async move {
-            counter.fetch_add(1, Ordering::SeqCst);
+    emitter
+        .on("event1", move |_args: ()| {
+            let counter = counter1_clone.clone();
+            Box::pin(async move {
+                counter.fetch_add(1, Ordering::SeqCst);
+            })
         })
-    }).await;
+        .await;
 
-    emitter.on("event2", move |_args: ()| {
-        let counter = counter2_clone.clone();
-        Box::pin(async move {
-            counter.fetch_add(1, Ordering::SeqCst);
+    emitter
+        .on("event2", move |_args: ()| {
+            let counter = counter2_clone.clone();
+            Box::pin(async move {
+                counter.fetch_add(1, Ordering::SeqCst);
+            })
         })
-    }).await;
+        .await;
 
     emitter.emit("event1", vec![]).await;
     emitter.emit("event2", vec![]).await;
@@ -201,7 +227,6 @@ async fn test_multiple_events() {
     assert_eq!(counter2.load(Ordering::SeqCst), 1);
 }
 
-
 #[tokio::test]
 async fn test_performance() {
     let runtime = Arc::new(TokioRuntime::new());
@@ -210,12 +235,14 @@ async fn test_performance() {
     let counter = Arc::new(AtomicI32::new(0));
     let counter_clone = counter.clone();
 
-    emitter.on("perf_event", move |_args: ()| {
-        let counter = counter_clone.clone();
-        Box::pin(async move {
-            counter.fetch_add(1, Ordering::Relaxed);
+    emitter
+        .on("perf_event", move |_args: ()| {
+            let counter = counter_clone.clone();
+            Box::pin(async move {
+                counter.fetch_add(1, Ordering::Relaxed);
+            })
         })
-    }).await;
+        .await;
 
     let start = std::time::Instant::now();
     let futures = (0..10_000).map(|_| emitter.emit("perf_event", vec![]));
@@ -226,6 +253,8 @@ async fn test_performance() {
 
     sleep(Duration::from_millis(100)).await;
     assert_eq!(counter.load(Ordering::SeqCst), 10_000);
-    assert!(duration < Duration::from_secs(5), "Performance test took too long");
+    assert!(
+        duration < Duration::from_secs(5),
+        "Performance test took too long"
+    );
 }
-

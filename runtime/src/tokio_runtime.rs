@@ -23,7 +23,6 @@ impl TokioRuntime {
                 _runtime: None,
             },
             Err(_) => {
-                // 当前环境中没有 Handle，创建新的 Runtime
                 let runtime = Arc::new(
                     tokio::runtime::Builder::new_multi_thread()
                         .enable_all()

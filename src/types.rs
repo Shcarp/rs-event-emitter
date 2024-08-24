@@ -12,4 +12,3 @@ pub type BoxedAsyncHandler = (
     HandlerId,
     Arc<dyn Fn(&[ArcAny]) -> BoxFuture<'static, ()> + Send + Sync>,
 );
-

@@ -1,5 +1,5 @@
-use std::{any::Any, sync::Arc};
 use std::error::Error;
+use std::{any::Any, sync::Arc};
 
 use futures::future::BoxFuture;
 use uuid::Uuid;
@@ -41,7 +41,7 @@ where
             if let Some(typed_args) = Args::from_args(args) {
                 handler(typed_args)
             } else {
-                Box::pin(async {  })
+                Box::pin(async {})
             }
         }),
     );
@@ -56,4 +56,3 @@ pub fn format_panic_message(panic_error: Box<dyn Any + Send>) -> String {
         .or_else(|| panic_error.downcast_ref::<String>().cloned())
         .unwrap_or_else(|| "Unknown panic message".to_string())
 }
-

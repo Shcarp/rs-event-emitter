@@ -1,5 +1,5 @@
-use std::{collections::HashMap, sync::Arc};
-use std::panic::{self, AssertUnwindSafe}; // Add this line
+use std::panic::{self, AssertUnwindSafe};
+use std::{collections::HashMap, sync::Arc}; // Add this line
 
 use futures::future::join_all; // Add this line
 
@@ -38,7 +38,7 @@ impl<R: AsyncRuntime> Clone for AsyncEventEmitter<R> {
 impl<R: AsyncRuntime> AsyncEventEmitter<R> {
     pub async fn on<F, Args>(&self, event: &str, handler: F) -> HandlerId
     where
-        F: Fn(Args) -> futures::future::BoxFuture<'static, ()>  + Send + Sync + 'static,
+        F: Fn(Args) -> futures::future::BoxFuture<'static, ()> + Send + Sync + 'static,
         Args: FromArgs + 'static,
     {
         let boxed_handler: BoxedAsyncHandler = utils::create_async_handler(handler);
@@ -82,12 +82,12 @@ impl<R: AsyncRuntime> AsyncEventEmitter<R> {
 
                         match result {
                             Ok(future) => {
-                                // 使用 catch_unwind 捕获 future.await 中的 panic
                                 let future_result = AssertUnwindSafe(future).catch_unwind().await;
-                                
+
                                 match future_result {
                                     Err(panic_error) => {
-                                        let panic_message = match panic_error.downcast_ref::<&str>() {
+                                        let panic_message = match panic_error.downcast_ref::<&str>()
+                                        {
                                             Some(s) => s.to_string(),
                                             None => match panic_error.downcast_ref::<String>() {
                                                 Some(s) => s.clone(),
@@ -95,10 +95,10 @@ impl<R: AsyncRuntime> AsyncEventEmitter<R> {
                                             },
                                         };
                                         println!("Panic occurred during await: {}", panic_message);
-                                    },
+                                    }
                                     _ => {}
                                 }
-                            },
+                            }
                             Err(panic_error) => {
                                 let panic_message = match panic_error.downcast_ref::<&str>() {
                                     Some(s) => s.to_string(),
@@ -118,5 +118,4 @@ impl<R: AsyncRuntime> AsyncEventEmitter<R> {
             let _ = join_all(futures).await;
         }
     }
-
 }
