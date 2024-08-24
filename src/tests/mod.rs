@@ -7,3 +7,4 @@ mod test_event_with_off_multithreaded;
 mod test_multi_threaded_emission;
 mod test_multiple_event_types;
 mod test_multiple_handlers;
+mod test_async_event_base;

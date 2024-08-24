@@ -1,7 +1,7 @@
 use std::sync::atomic::{AtomicI32, Ordering};
-use std::time::Duration;
 use std::sync::Arc;
 use std::thread;
+use std::time::Duration;
 
 use super::*;
 
@@ -27,7 +27,8 @@ fn test_event_with_off_multithreaded() {
         let handle = thread::spawn(move || {
             for i in 0..20 {
                 emit!(emitter_clone, "increment", 1);
-                if i == 9 { // Pause halfway through to allow for handler removal
+                if i == 9 {
+                    // Pause halfway through to allow for handler removal
                     thread::sleep(Duration::from_millis(50));
                 }
                 thread::sleep(Duration::from_millis(1));
@@ -60,7 +61,7 @@ fn test_event_with_off_multithreaded() {
         total_events
     );
 
-        // Emit more events after removing the handler
+    // Emit more events after removing the handler
     for _ in 0..20 {
         emit!(emitter, "increment", 1);
     }

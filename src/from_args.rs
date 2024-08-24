@@ -1,6 +1,6 @@
-use all_tuples::all_tuples;
-use crate::types::ArcAny;
 use crate::impl_from_args;
+use crate::types::ArcAny;
+use all_tuples::all_tuples;
 
 pub trait FromArgs: Sized {
     fn from_args(args: &[ArcAny]) -> Option<Self>;

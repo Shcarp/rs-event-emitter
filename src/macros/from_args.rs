@@ -2,15 +2,22 @@
 macro_rules! idx_from_args {
     ($ty:ident) => {{
         const TYPE_NAME: &str = stringify!($ty);
-        let digits: String = TYPE_NAME.chars().rev()
+        let digits: String = TYPE_NAME
+            .chars()
+            .rev()
             .take_while(|c| c.is_ascii_digit())
             .collect::<String>()
-            .chars().rev().collect();
-        
+            .chars()
+            .rev()
+            .collect();
+
         if digits.is_empty() {
-            panic!("Invalid type name for FromArgs: {}. Type name must end with a number.", TYPE_NAME);
+            panic!(
+                "Invalid type name for FromArgs: {}. Type name must end with a number.",
+                TYPE_NAME
+            );
         }
-        
+
         match digits.parse::<usize>() {
             Ok(idx) => idx,
             Err(_) => panic!("Failed to parse index from type name: {}", TYPE_NAME),

@@ -1,8 +1,8 @@
 use std::collections::HashMap;
+use std::sync::mpsc::RecvTimeoutError;
+use std::sync::mpsc::{channel, Receiver, Sender};
 use std::sync::{Arc, Mutex};
 use std::thread;
-use std::sync::mpsc::{channel, Sender, Receiver};
-use std::sync::mpsc::RecvTimeoutError;
 use std::time::Duration;
 use threadpool::ThreadPool;
 
@@ -44,23 +44,20 @@ impl EventEmitter {
     {
         let boxed_handler: BoxedHandler = utils::create_handler(handler);
         let cloned_handler = boxed_handler.clone();
-    
+
         let mut handlers = self.handlers.lock().unwrap();
         handlers
             .entry(event.to_string())
             .or_insert_with(Vec::new)
             .push(boxed_handler);
-    
-        cloned_handler.0.clone()
+
+        cloned_handler.0
     }
 
-    pub fn off(&self, event: &str, handler_id: HandlerId)
-    {
+    pub fn off(&self, event: &str, handler_id: HandlerId) {
         let mut handlers = self.handlers.lock().unwrap();
         if let Some(event_handlers) = handlers.get_mut(event) {
-            event_handlers.retain(|(id, _)| {
-                *id != handler_id
-            });
+            event_handlers.retain(|(id, _)| *id != handler_id);
         }
     }
 
@@ -82,7 +79,11 @@ impl EventEmitter {
                     break;
                 }
 
-                match receiver.lock().unwrap().recv_timeout(Duration::from_millis(10)) {
+                match receiver
+                    .lock()
+                    .unwrap()
+                    .recv_timeout(Duration::from_millis(10))
+                {
                     Ok((event, args)) => {
                         let event_handlers = {
                             let handlers = handlers.lock().unwrap();
@@ -98,7 +99,7 @@ impl EventEmitter {
                                 });
                             }
                         }
-                    },
+                    }
                     Err(RecvTimeoutError::Timeout) => continue,
                     Err(RecvTimeoutError::Disconnected) => {
                         println!("Channel disconnected, stopping listener");
@@ -126,4 +127,3 @@ impl EventEmitter {
         }
     }
 }
-

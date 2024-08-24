@@ -1,9 +1,8 @@
-use std::time::Duration;
 use std::sync::{Arc, Mutex};
 use std::thread;
+use std::time::Duration;
 
 use super::*;
-
 
 #[test]
 pub fn test_multiple_event_types() {

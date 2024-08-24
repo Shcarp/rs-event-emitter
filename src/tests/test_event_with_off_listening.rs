@@ -1,8 +1,7 @@
 use std::sync::atomic::{AtomicI32, Ordering};
-use std::time::Duration;
 use std::sync::Arc;
 use std::thread;
-
+use std::time::Duration;
 
 use super::*;
 
@@ -13,7 +12,7 @@ fn test_event_with_off_listening() {
 
     let counter = Arc::new(AtomicI32::new(0));
     let counter_clone = Arc::clone(&counter);
-    
+
     let handler_id = emitter.on("increment", move |(value,): (i32,)| {
         counter_clone.fetch_add(value, Ordering::SeqCst);
     });
@@ -78,4 +77,3 @@ fn test_event_with_off_listening() {
     // Wait for the listener thread to finish
     listener.join().unwrap();
 }
-
