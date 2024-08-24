@@ -11,3 +11,4 @@ repository = "https://github.com/Shcarp/rs-event-emitter.git"
 [dependencies]
 threadpool = "1.8.1"
 num_cpus = "1.16.0"
+all_tuples = { path = "./all_tuples" }

@@ -1,18 +1,30 @@
 #[macro_export]
 macro_rules! idx_from_args {
     ($ty:ident) => {{
-        const LOWERCASE: &str = $crate::to_lowercase!($ty);
-        let idx = LOWERCASE.as_bytes()[0].wrapping_sub(b'a') as usize;
-        if idx >= 26 { panic!("Invalid type name for FromArgs: {}", stringify!($ty)); }
-        idx
+        const TYPE_NAME: &str = stringify!($ty);
+        let digits: String = TYPE_NAME.chars().rev()
+            .take_while(|c| c.is_ascii_digit())
+            .collect::<String>()
+            .chars().rev().collect();
+        
+        if digits.is_empty() {
+            panic!("Invalid type name for FromArgs: {}. Type name must end with a number.", TYPE_NAME);
+        }
+        
+        match digits.parse::<usize>() {
+            Ok(idx) => idx,
+            Err(_) => panic!("Failed to parse index from type name: {}", TYPE_NAME),
+        }
     }};
 }
+
 #[macro_export]
 macro_rules! count_tts {
     () => {0};
     ($head:tt $($tail:tt)*) => {1 + $crate::count_tts!($($tail)*)};
 }
 
+// 生成 FromArgs 的实现, 参数末尾为从 0 开始的连续数字 比如 P0, P1, P2
 #[macro_export]
 macro_rules! impl_from_args {
     ($($ty:ident),*) => {
@@ -31,4 +43,3 @@ macro_rules! impl_from_args {
         }
     };
 }
-
