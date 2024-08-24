@@ -8,12 +8,12 @@ use threadpool::ThreadPool;
 
 use crate::from_args::FromArgs;
 use crate::types::{ArcAny, BoxedHandler, HandlerId};
+use crate::utils;
 
 pub struct EventEmitter {
     handlers: Arc<Mutex<HashMap<String, Vec<BoxedHandler>>>>,
     sender: Sender<(String, Vec<ArcAny>)>,
     receiver: Arc<Mutex<Receiver<(String, Vec<ArcAny>)>>>,
-    next_id: Arc<Mutex<HandlerId>>,
     stop_sender: Sender<()>,
     stop_receiver: Arc<Mutex<Receiver<()>>>,
     thread_pool: Arc<ThreadPool>,
@@ -34,7 +34,6 @@ impl EventEmitter {
             stop_sender,
             stop_receiver: Arc::new(Mutex::new(stop_receiver)),
             thread_pool: Arc::new(ThreadPool::new(thread_pool_size)),
-            next_id: Arc::new(Mutex::new(0)),
         }
     }
 
@@ -43,24 +42,16 @@ impl EventEmitter {
         F: Fn(Args) + Send + Sync + 'static,
         Args: FromArgs + 'static,
     {
-        let handler_id = {
-            let mut next_id = self.next_id.lock().unwrap();
-            *next_id += 1;
-            *next_id
-        };
-        let boxed_handler: BoxedHandler = (handler_id, Arc::new(move |args: &[ArcAny]| {
-            if let Some(typed_args) = Args::from_args(args) {
-                handler(typed_args);
-            }
-        }));
-
+        let boxed_handler: BoxedHandler = utils::create_handler(handler);
+        let cloned_handler = boxed_handler.clone();
+    
         let mut handlers = self.handlers.lock().unwrap();
         handlers
             .entry(event.to_string())
             .or_insert_with(Vec::new)
             .push(boxed_handler);
-
-        handler_id
+    
+        cloned_handler.0.clone()
     }
 
     pub fn off(&self, event: &str, handler_id: HandlerId)
@@ -129,7 +120,6 @@ impl EventEmitter {
             handlers: Arc::clone(&self.handlers),
             sender: self.sender.clone(),
             receiver: Arc::clone(&self.receiver),
-            next_id: Arc::clone(&self.next_id),
             stop_sender: self.stop_sender.clone(),
             stop_receiver: Arc::clone(&self.stop_receiver),
             thread_pool: Arc::clone(&self.thread_pool),
