@@ -1,6 +1,8 @@
 use crate::{async_emit, AsyncEventEmitter};
+
 use futures::future::join_all;
 use runtime::TokioRuntime;
+
 use std::{
     panic,
     sync::{
@@ -8,6 +10,7 @@ use std::{
         Arc,
     },
 };
+
 use tokio::time::{sleep, Duration};
 
 #[tokio::test]

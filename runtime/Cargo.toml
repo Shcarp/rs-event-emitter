@@ -5,4 +5,8 @@ edition = "2021"
 
 [dependencies]
 futures = "0.3.30"
-tokio = { version = "1.39.3", features = ["full"] }
+tokio = { version = "1.39.3", features = ["full"], optional = true }
+
+[features]
+tokio_runtime = ["dep:tokio"]
+

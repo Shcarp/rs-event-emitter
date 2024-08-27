@@ -1,14 +1,22 @@
-use std::error::Error;
-use std::{any::Any, sync::Arc};
+use std::sync::Arc;
 
+#[cfg(feature = "async")]
 use futures::future::BoxFuture;
+
 use uuid::Uuid;
 
 use crate::{
     from_args::FromArgs,
-    types::{ArcAny, BoxedAsyncHandler, BoxedHandler},
+    types::ArcAny,
 };
 
+#[cfg(feature = "async")]
+use crate::types::BoxedAsyncHandler;
+
+#[cfg(feature = "sync")]
+use crate::types::BoxedHandler;
+
+#[cfg(feature = "sync")]
 pub fn create_handler<F, Args>(handler: F) -> BoxedHandler
 where
     F: Fn(Args) + Send + Sync + 'static,
@@ -28,6 +36,7 @@ where
     boxed_handler
 }
 
+#[cfg(feature = "async")]
 pub fn create_async_handler<F, Args>(handler: F) -> BoxedAsyncHandler
 where
     F: Fn(Args) -> BoxFuture<'static, ()> + Send + Sync + 'static,
@@ -47,12 +56,4 @@ where
     );
 
     boxed_handler
-}
-
-pub fn format_panic_message(panic_error: Box<dyn Any + Send>) -> String {
-    panic_error
-        .downcast_ref::<&str>()
-        .map(|s| s.to_string())
-        .or_else(|| panic_error.downcast_ref::<String>().cloned())
-        .unwrap_or_else(|| "Unknown panic message".to_string())
 }

@@ -16,13 +16,18 @@ Add this to your `Cargo.toml`:
 
 ```toml
 [dependencies]
-event_emitter = "2.0.2"  # Replace with the actual version
+event_emitter = "3.0.0" 
 ```
 
 ## Usage
 
-Here's a more comprehensive example demonstrating various features of the `EventEmitter`:
+Here's a more comprehensive example demonstrating various features of the `EventEmitter` and `AsyncEventEmitter`:
 
+## `EventEmitter`
+
+The main struct for managing events.
+
+### Example
 ```rust
 use event_emitter::{EventEmitter, emit};
 use std::sync::{Arc, Mutex};
@@ -105,13 +110,8 @@ This example demonstrates:
 6. Passing callbacks as event arguments
 7. Cloning and using the `EventEmitter` in different threads
 
-Remember to handle potential errors and use appropriate synchronization primitives in your actual implementation.
 
-## API
-
-### `EventEmitter`
-
-The main struct for managing events.
+### API
 
 #### Methods
 
@@ -124,17 +124,95 @@ The main struct for managing events.
 - `stop_listening(&self)`: Stop the event processing loop.
 - `clone(&self) -> Self`: Create a clone of the `EventEmitter`.
 
-### Event Parameters
 
-The `EventEmitter` supports up to 16 parameters for each event. This limit is implemented through the `FromArgs` trait and the `impl_from_args!` macro. If you need to pass more than 16 parameters, consider grouping related data into structs or using a Vec or HashMap to pass collections of data.
+## `AsyncEventEmitter`
+```
+rs-event-emitter = { version = "2.0.2", features = ["async"] }
 
-### Macros
+// or use tokio runtime
+rs-event-emitter = { version = "2.0.2", features = ["async", "tokio_runtime"] }
+```
+
+### Example
+
+```rust
+#[tokio::main]
+async fn use_tokio_runtime() {
+    // use tokio runtime
+    let rt = Arc::new(TokioRuntime::new());
+
+    let emitter = AsyncEventEmitter::new(rt);
+
+    let counter = Arc::new(AtomicI32::new(0));
+
+    let counter_clone = counter.clone();
+
+    emitter
+        .on("test_event", move |_args: ()| {
+            let counter = counter_clone.clone();
+            Box::pin(async move {
+                counter.fetch_add(1, Ordering::SeqCst);
+            })
+        })
+        .await;
+
+    emitter.emit("test_event", vec![]).await;
+    // emitter.emit("test_event", vec![]).await;
+    async_emit!(emitter, "test_event").await;
+
+    assert_eq!(counter.load(Ordering::SeqCst), 2);
+
+    println!("done");
+}
+
+// or use custom runtime
+use rs_event_emitter::runtime::*;
+
+struct CustomRuntime;
+
+impl Runtime for CustomRuntime {
+    ...
+}
+
+fn use_custom_runtime() {
+    // use custom runtime
+    let rt = Arc::new(CustomRuntime::new());
+    let emitter = AsyncEventEmitter::new(rt);   
+}
+
+```
+This example demonstrates:
+
+1. Creating and starting an `AsyncEventEmitter`
+2. Registering asynchronous event handlers
+3. Emitting events with typed arguments
+4. Using custom async runtimes
+5. Handling events with multiple arguments
+6. Emitting events with the `async_emit!` macro
+
+### API
+
+#### Methods
+
+- `new(rt: Arc<R>)`: Create a new `AsyncEventEmitter` with the given async runtime.
+- `async on<F, Args>(&self, event: &str, handler: F) -> HandlerId`: Register an asynchronous event handler.
+- `async off(&self, event: &str, handler_id: HandlerId)`: Remove a specific handler for an event.
+- `async emit(&self, event: &str, args: Vec<ArcAny>)`: Emit an event asynchronously.
+- `clone(&self) -> Self`: Create a clone of the `AsyncEventEmitter`.
+
+Note: All methods on `AsyncEventEmitter` are asynchronous and return `Future`s that need to be awaited.
+
+## Additional Information
+
+- **Event Parameters**: Supports up to 16 parameters per event. For more, use structs or collections.
+- **Macros**: `emit!` for convenient event emission with typed arguments.
+- **Threading**: Designed to be thread-safe with concurrent event processing.
+- **Testing**: Run tests with `cargo test`.
+
+## Macros
 
 - `emit!`: A convenient macro for emitting events with typed arguments.
-
-## Threading
-
-The `EventEmitter` is designed to be thread-safe. Event handlers are executed in separate threads, allowing for concurrent processing of events.
+- `async_emit!`: A convenient macro for emitting events with typed arguments.
 
 ## Testing
 
