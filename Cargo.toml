@@ -28,3 +28,9 @@ sync = []
 async = ["dep:runtime", "dep:futures", "dep:parking_lot"]
 tokio_runtime = ["async", "runtime?/tokio_runtime"]
 
+[workspace]
+   members = [
+       "all_tuples",
+       "runtime",
+   ]
+
