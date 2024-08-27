@@ -2,6 +2,8 @@
 name = "emitter_runtime"
 version = "0.1.0"
 edition = "2021"
+license = "MIT"
+description = "Runtime support for rs-event-emitter"
 
 [dependencies]
 futures = "0.3.30"

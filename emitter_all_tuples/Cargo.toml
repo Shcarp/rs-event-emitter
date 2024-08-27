@@ -2,6 +2,8 @@
 name = "emitter_all_tuples"
 version = "0.1.0"
 edition = "2021"
+license = "MIT"
+description = "Procedural macro for rs-event-emitter"
 
 [lib]
 proc-macro = true
