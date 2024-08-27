@@ -75,6 +75,14 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "baf1de4339761588bc0619e3cbc0120ee582ebb74b53b4efbf79117bd2da40fd"
 
 [[package]]
+name = "emitter_runtime"
+version = "0.1.0"
+dependencies = [
+ "futures",
+ "tokio",
+]
+
+[[package]]
 name = "futures"
 version = "0.3.30"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -315,21 +323,13 @@ name = "rs-event-emitter"
 version = "3.0.0"
 dependencies = [
  "all_tuples",
+ "emitter_runtime",
  "futures",
  "num_cpus",
- "runtime",
  "thiserror",
  "threadpool",
  "tokio",
  "uuid",
-]
-
-[[package]]
-name = "runtime"
-version = "0.1.0"
-dependencies = [
- "futures",
- "tokio",
 ]
 
 [[package]]

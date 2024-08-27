@@ -4,7 +4,7 @@ use std::{collections::HashMap, sync::Arc}; // Add this line
 use futures::future::join_all; // Add this line
 
 use futures::FutureExt;
-use runtime::{AsyncRuntime, AsyncRwLock, AsyncRwLockReadGuard, AsyncRwLockWriteGuard};
+use emitter_runtime::{AsyncRuntime, AsyncRwLock, AsyncRwLockReadGuard, AsyncRwLockWriteGuard};
 
 use crate::{
     from_args::FromArgs,

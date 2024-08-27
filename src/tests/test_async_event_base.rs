@@ -1,7 +1,7 @@
 use crate::{async_emit, AsyncEventEmitter};
 
 use futures::future::join_all;
-use runtime::TokioRuntime;
+use emitter_runtime::TokioRuntime;
 
 use std::{
     panic,

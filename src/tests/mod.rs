@@ -1,3 +1,4 @@
+#![allow(unused_imports)]
 use super::*;
 #[cfg(feature = "async")]
 mod test_async_event_base;

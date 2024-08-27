@@ -20,7 +20,7 @@ pub use emitter::EventEmitter;
 pub use async_emitter::AsyncEventEmitter;
 
 #[cfg(feature = "async")]
-pub use runtime::*;
+pub use emitter_runtime::*;
 
 #[cfg(any(feature = "sync", feature = "async"))]
 pub use macros::emit;
