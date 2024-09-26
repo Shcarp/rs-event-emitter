@@ -119,7 +119,7 @@ This example demonstrates:
 - `with_thread_pool_size(thread_pool_size: usize)`: Create a new `EventEmitter` with a specified capacity.
 - `on<F, Args>(&self, event: &str, handler: F) -> HandlerId`: Register an event handler.
 - `off(&self, event: &str, handler_id: HandlerId)`: Remove all handlers for an event.
-- `emit(&self, event: &str, args: Vec<ArcAny>)`: Emit an event.
+- `emit(&self, event: &str, args: Vec<Param>)`: Emit an event.
 - `start_listening(&self) -> JoinHandle<()>`: Start the event processing loop.
 - `stop_listening(&self)`: Stop the event processing loop.
 - `clone(&self) -> Self`: Create a clone of the `EventEmitter`.
@@ -197,7 +197,7 @@ This example demonstrates:
 - `new(rt: Arc<R>)`: Create a new `AsyncEventEmitter` with the given async runtime.
 - `async on<F, Args>(&self, event: &str, handler: F) -> HandlerId`: Register an asynchronous event handler.
 - `async off(&self, event: &str, handler_id: HandlerId)`: Remove a specific handler for an event.
-- `async emit(&self, event: &str, args: Vec<ArcAny>)`: Emit an event asynchronously.
+- `async emit(&self, event: &str, args: Vec<Param>)`: Emit an event asynchronously.
 - `clone(&self) -> Self`: Create a clone of the `AsyncEventEmitter`.
 
 Note: All methods on `AsyncEventEmitter` are asynchronous and return `Future`s that need to be awaited.

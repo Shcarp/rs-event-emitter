@@ -7,13 +7,13 @@ use std::time::Duration;
 use threadpool::ThreadPool;
 
 use crate::from_args::FromArgs;
-use crate::types::{ArcAny, BoxedHandler, HandlerId};
+use crate::types::{Param, BoxedHandler, HandlerId};
 use crate::utils;
 
 pub struct EventEmitter {
     handlers: Arc<Mutex<HashMap<String, Vec<BoxedHandler>>>>,
-    sender: Sender<(String, Vec<ArcAny>)>,
-    receiver: Arc<Mutex<Receiver<(String, Vec<ArcAny>)>>>,
+    sender: Sender<(String, Vec<Param>)>,
+    receiver: Arc<Mutex<Receiver<(String, Vec<Param>)>>>,
     stop_sender: Sender<()>,
     stop_receiver: Arc<Mutex<Receiver<()>>>,
     thread_pool: Arc<ThreadPool>,
@@ -61,7 +61,7 @@ impl EventEmitter {
         }
     }
 
-    pub fn emit(&self, event: &str, args: Vec<ArcAny>) {
+    pub fn emit(&self, event: &str, args: Vec<Param>) {
         let _ = self.sender.send((event.to_string(), args));
     }
 

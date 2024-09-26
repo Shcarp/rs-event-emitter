@@ -8,7 +8,7 @@ use emitter_runtime::{AsyncRuntime, AsyncRwLock, AsyncRwLockReadGuard, AsyncRwLo
 
 use crate::{
     from_args::FromArgs,
-    types::{ArcAny, BoxedAsyncHandler, HandlerId},
+    types::{Param, BoxedAsyncHandler, HandlerId},
     utils,
 };
 
@@ -64,7 +64,7 @@ impl<R: AsyncRuntime> AsyncEventEmitter<R> {
         drop(handlers_guard);
     }
 
-    pub async fn emit(&self, event: &str, args: Vec<ArcAny>) {
+    pub async fn emit(&self, event: &str, args: Vec<Param>) {
         let handlers_guard = self.handlers.read().await;
         let handlers = handlers_guard.deref();
         if let Some(event_handlers) = handlers.get(event) {

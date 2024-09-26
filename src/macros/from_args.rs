@@ -36,7 +36,7 @@ macro_rules! count_tts {
 macro_rules! impl_from_args {
     ($($ty:ident),*) => {
         impl<$($ty: 'static + Clone),*> FromArgs for ($($ty,)*) {
-            fn from_args(args: &[ArcAny]) -> Option<Self> {
+            fn from_args(args: &[Param]) -> Option<Self> {
                 let expected_len = $crate::count_tts!($($ty)*);
                 if args.len() != expected_len {
                     return None;

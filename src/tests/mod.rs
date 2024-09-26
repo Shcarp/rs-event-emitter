@@ -18,3 +18,5 @@ mod test_multi_threaded_emission;
 mod test_multiple_event_types;
 #[cfg(feature = "sync")]
 mod test_multiple_handlers;
+#[cfg(feature = "wasm")]
+mod test_wasm_event;
