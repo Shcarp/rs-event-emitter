@@ -369,7 +369,7 @@ dependencies = [
 
 [[package]]
 name = "rs-event-emitter"
-version = "3.0.2"
+version = "3.0.3"
 dependencies = [
  "emitter_all_tuples",
  "emitter_runtime",
