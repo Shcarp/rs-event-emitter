@@ -16,7 +16,7 @@ mod utils;
 mod wasm_emitter;
 
 #[cfg(feature = "wasm")]
-pub use wasm_emitter::*;
+pub use wasm_emitter::EventEmitter;
 
 #[cfg(feature = "async")]
 pub use async_emitter::AsyncEventEmitter;
